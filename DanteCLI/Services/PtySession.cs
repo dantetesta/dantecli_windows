@@ -1,104 +1,107 @@
 using System;
+using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Pty.Net;
+using DanteCLI.ViewModels;
 
 namespace DanteCLI.Services;
 
 /// <summary>
-/// Wraps a pseudo-console (ConPTY) session. Use <see cref="StartAsync"/> to spawn a shell;
-/// subscribe to <see cref="Output"/> for stdout/stderr (interleaved); call <see cref="WriteInput"/>
-/// to feed keystrokes.
+/// Minimal terminal session backed by <see cref="Process"/> with redirected stdin/stdout/stderr.
+/// **No ConPTY** in this MVP — interactive TUIs (htop, vim, nano) won't render correctly.
+/// Replace with a proper ConPTY implementation (Pty.Net, or hand-rolled CreatePseudoConsole P/Invoke)
+/// once the rest of the app is solid.
 /// </summary>
 public sealed class PtySession : IAsyncDisposable
 {
     public event EventHandler<ReadOnlyMemory<byte>>? Output;
     public event EventHandler? Exited;
 
-    private IPtyConnection? _pty;
+    private Process? _process;
     private CancellationTokenSource? _cts;
-    private Task? _readLoop;
+    private Task? _readStdout;
+    private Task? _readStderr;
 
-    public bool IsRunning => _pty is not null;
+    public bool IsRunning => _process is { HasExited: false };
 
-    public async Task StartAsync(string shell, string[]? args, string? cwd, int cols = 120, int rows = 30)
+    public Task StartAsync(string shell, string[]? args, string? cwd, int cols = 120, int rows = 30)
     {
-        if (_pty is not null) throw new InvalidOperationException("Already started");
+        if (_process is not null) throw new InvalidOperationException("Already started");
 
-        var options = new PtyOptions
+        var psi = new ProcessStartInfo
         {
-            Name = "DanteCLI",
-            App = shell,
-            CommandLine = args ?? Array.Empty<string>(),
-            Cols = cols,
-            Rows = rows,
-            Cwd = cwd ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            Environment = BuildEnvironment(),
+            FileName = shell,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardInputEncoding = Encoding.UTF8,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            WorkingDirectory = cwd ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         };
 
-        _pty = await PtyProvider.SpawnAsync(options, CancellationToken.None);
-        _cts = new CancellationTokenSource();
-        _readLoop = Task.Run(() => ReadLoop(_cts.Token));
+        if (args is not null)
+            foreach (var a in args) psi.ArgumentList.Add(a);
 
-        _pty.ProcessExited += (_, _) => Exited?.Invoke(this, EventArgs.Empty);
+        psi.Environment["TERM"] = "xterm-256color";
+        psi.Environment["COLORTERM"] = "truecolor";
+        psi.Environment["DANTE_CLI"] = "1";
+
+        _process = Process.Start(psi) ?? throw new InvalidOperationException("Could not spawn shell");
+        _process.EnableRaisingEvents = true;
+        _process.Exited += (_, _) => Exited?.Invoke(this, EventArgs.Empty);
+
+        _cts = new CancellationTokenSource();
+        _readStdout = Task.Run(() => PumpAsync(_process.StandardOutput.BaseStream, _cts.Token));
+        _readStderr = Task.Run(() => PumpAsync(_process.StandardError.BaseStream, _cts.Token));
+
+        return Task.CompletedTask;
     }
 
     public void Resize(int cols, int rows)
     {
-        if (_pty is null) return;
-        try { _pty.Resize(cols, rows); } catch { /* ignore */ }
+        // No-op until ConPTY: redirected pipes don't have a concept of TTY size.
     }
 
     public void WriteInput(ReadOnlySpan<byte> data)
     {
-        if (_pty is null) return;
-        _pty.WriterStream.Write(data);
-        _pty.WriterStream.Flush();
+        if (_process is null) return;
+        try
+        {
+            _process.StandardInput.BaseStream.Write(data);
+            _process.StandardInput.BaseStream.Flush();
+        }
+        catch (IOException) { /* pipe closed */ }
     }
 
-    public void WriteInput(string text)
-    {
-        var bytes = System.Text.Encoding.UTF8.GetBytes(text);
-        WriteInput(bytes);
-    }
+    public void WriteInput(string text) => WriteInput(Encoding.UTF8.GetBytes(text));
 
-    private async Task ReadLoop(CancellationToken ct)
+    private async Task PumpAsync(Stream stream, CancellationToken ct)
     {
-        if (_pty is null) return;
         var buffer = new byte[8192];
         while (!ct.IsCancellationRequested)
         {
             int n;
-            try
-            {
-                n = await _pty.ReaderStream.ReadAsync(buffer.AsMemory(), ct);
-            }
-            catch (Exception) { break; }
+            try { n = await stream.ReadAsync(buffer.AsMemory(), ct); }
+            catch { break; }
             if (n <= 0) break;
-            Output?.Invoke(this, new ReadOnlyMemory<byte>(buffer, 0, n).ToArray());
+            var copy = new byte[n];
+            Buffer.BlockCopy(buffer, 0, copy, 0, n);
+            Output?.Invoke(this, new ReadOnlyMemory<byte>(copy));
         }
-    }
-
-    private static System.Collections.Generic.Dictionary<string, string> BuildEnvironment()
-    {
-        var env = new System.Collections.Generic.Dictionary<string, string>();
-        foreach (System.Collections.DictionaryEntry e in Environment.GetEnvironmentVariables())
-        {
-            if (e.Key is string k && e.Value is string v)
-                env[k] = v;
-        }
-        env["TERM"] = "xterm-256color";
-        env["COLORTERM"] = "truecolor";
-        env["DANTE_CLI"] = "1";
-        return env;
     }
 
     public async ValueTask DisposeAsync()
     {
         _cts?.Cancel();
-        if (_readLoop is not null) { try { await _readLoop; } catch { } }
-        try { _pty?.Dispose(); } catch { }
-        _pty = null;
+        if (_readStdout is not null) { try { await _readStdout; } catch { } }
+        if (_readStderr is not null) { try { await _readStderr; } catch { } }
+        try { _process?.Kill(entireProcessTree: true); } catch { }
+        _process?.Dispose();
+        _process = null;
     }
 }
