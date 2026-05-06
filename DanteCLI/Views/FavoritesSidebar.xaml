@@ -37,10 +37,7 @@
                     <Grid Padding="6">
                         <StackPanel Orientation="Vertical" Spacing="2">
                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                <TextBlock Text="{Binding Emoji}" FontSize="14"
-                                           Visibility="{Binding HasEmoji}" />
-                                <FontIcon Glyph="&#xE8B7;" FontSize="12"
-                                          Visibility="{Binding NoEmoji}" />
+                                <TextBlock Text="{Binding Emoji}" FontSize="14" />
                                 <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="Medium" />
                             </StackPanel>
                             <TextBlock Text="{Binding DisplayPath}" FontSize="10" Opacity="0.6" />

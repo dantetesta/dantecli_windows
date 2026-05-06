@@ -22,11 +22,9 @@
                  Background="Transparent"
                  BorderThickness="0"
                  Foreground="Transparent"
-                 CaretBrush="Transparent"
-                 SelectionHighlightColor="Transparent"
+                 Opacity="0"
                  IsTabStop="True"
                  KeyDown="InputCapture_KeyDown"
-                 PreviewKeyDown="InputCapture_KeyDown"
                  BeforeTextChanging="InputCapture_BeforeTextChanging" />
     </Grid>
 </UserControl>
