@@ -3,11 +3,11 @@ using System.Text;
 using System.Text.RegularExpressions;
 using DanteCLI.Models;
 using DanteCLI.Services;
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Windows.System;
+using DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue;
 
 namespace DanteCLI.Views;
 
