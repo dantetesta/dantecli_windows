@@ -1,0 +1,33 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+[Pp]ublish/
+[Bb]uild/
+*.user
+*.suo
+*.opendb
+*.cache
+.vs/
+.vscode/
+.idea/
+
+# NuGet
+*.nupkg
+*.snupkg
+**/packages/*
+!**/packages/build/
+
+# AppX/MSIX outputs
+*.appxbundle
+*.appxupload
+AppPackages/
+BundleArtifacts/
+
+# Logs and temp
+*.log
+*.tmp
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
