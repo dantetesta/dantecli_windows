@@ -49,20 +49,22 @@ jobs:
             /p:AppxPackageSigningEnabled=false `
             /restore
 
-      - name: Publish self-contained EXE
-        run: |
-          dotnet publish $env:Project_Path `
-            -c ${{ matrix.configuration }} `
-            -r win-${{ matrix.platform }} `
-            --self-contained true `
-            -p:PublishSingleFile=false `
-            -p:WindowsPackageType=None `
-            -o publish/${{ matrix.platform }}
-
-      - name: Zip publish output
+      - name: Locate build output
+        id: locate
         shell: pwsh
         run: |
-          Compress-Archive -Path publish/${{ matrix.platform }}/* `
+          $out = "DanteCLI/bin/${{ matrix.platform }}/${{ matrix.configuration }}/net8.0-windows10.0.19041.0/win-${{ matrix.platform }}"
+          if (-not (Test-Path $out)) {
+              $out = "DanteCLI/bin/${{ matrix.platform }}/${{ matrix.configuration }}/net8.0-windows10.0.19041.0"
+          }
+          Write-Host "Output dir: $out"
+          Get-ChildItem $out | Select-Object -First 5
+          "out=$out" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Zip build output
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "${{ steps.locate.outputs.out }}/*" `
                            -DestinationPath "DanteCLI-${{ matrix.platform }}.zip" `
                            -Force
 
