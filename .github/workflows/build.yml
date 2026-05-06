@@ -37,34 +37,30 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Restore dependencies
-        run: dotnet restore $env:Solution_Name
+        run: dotnet restore $env:Project_Path -r win-${{ matrix.platform }}
 
-      - name: Build
+      - name: Publish self-contained
         run: |
-          msbuild $env:Solution_Name `
-            /p:Configuration=${{ matrix.configuration }} `
-            /p:Platform=${{ matrix.platform }} `
-            /p:WindowsPackageType=None `
-            /p:GenerateAppxPackageOnBuild=false `
-            /p:AppxPackageSigningEnabled=false `
-            /restore
+          dotnet publish $env:Project_Path `
+            -c ${{ matrix.configuration }} `
+            -r win-${{ matrix.platform }} `
+            --self-contained true `
+            -p:WindowsAppSDKSelfContained=true `
+            -p:WindowsPackageType=None `
+            -p:PublishSingleFile=false `
+            -p:Platform=${{ matrix.platform }} `
+            -o publish/${{ matrix.platform }}
 
-      - name: Locate build output
-        id: locate
+      - name: Verify output and list size
         shell: pwsh
         run: |
-          $out = "DanteCLI/bin/${{ matrix.platform }}/${{ matrix.configuration }}/net8.0-windows10.0.19041.0/win-${{ matrix.platform }}"
-          if (-not (Test-Path $out)) {
-              $out = "DanteCLI/bin/${{ matrix.platform }}/${{ matrix.configuration }}/net8.0-windows10.0.19041.0"
-          }
-          Write-Host "Output dir: $out"
-          Get-ChildItem $out | Select-Object -First 5
-          "out=$out" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Get-ChildItem -Recurse publish/${{ matrix.platform }} | Measure-Object -Sum Length |
+            ForEach-Object { "Total: {0:N1} MB" -f ($_.Sum / 1MB) }
 
       - name: Zip build output
         shell: pwsh
         run: |
-          Compress-Archive -Path "${{ steps.locate.outputs.out }}/*" `
+          Compress-Archive -Path "publish/${{ matrix.platform }}/*" `
                            -DestinationPath "DanteCLI-${{ matrix.platform }}.zip" `
                            -Force
 

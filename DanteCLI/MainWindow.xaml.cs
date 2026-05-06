@@ -16,7 +16,9 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         Title = "DANTE CLI";
-        ExtendsContentIntoTitleBar = true;
+        // Keep the system title bar (X / min / max) in its own strip — extending
+        // content into the title bar caused our [+] tab button to overlap with the
+        // close button. We can revisit with SetTitleBar() once the layout is solid.
 
         var state = AppState.Shared;
 
