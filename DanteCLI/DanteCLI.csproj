@@ -16,7 +16,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <Version>0.1.0</Version>
     <Authors>Dante Testa</Authors>
     <Product>DANTE CLI</Product>
@@ -36,9 +35,6 @@
 
   <ItemGroup>
     <None Include="Assets\icone-app.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Assets\app.ico" Condition="Exists('Assets\app.ico')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
