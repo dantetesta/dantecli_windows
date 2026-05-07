@@ -1,14 +1,13 @@
 using System;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using DanteCLI.Models;
-using Microsoft.UI;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
-using Windows.UI;
 
 namespace DanteCLI.Views;
 
-public sealed partial class TabChip : UserControl
+public partial class TabChip : UserControl
 {
     public event EventHandler<TerminalTab>? Selected;
     public event EventHandler<TerminalTab>? Closed;
@@ -17,18 +16,14 @@ public sealed partial class TabChip : UserControl
     private bool _isActive;
     private bool _hovering;
 
-    public TabChip()
-    {
-        InitializeComponent();
-    }
+    public TabChip() { InitializeComponent(); }
 
     public void Bind(TerminalTab tab, bool isActive)
     {
         _tab = tab;
         _isActive = isActive;
         TitleBlock.Text = tab.Title;
-        TitleBlock.FontWeight = isActive ? Microsoft.UI.Text.FontWeights.SemiBold
-                                          : Microsoft.UI.Text.FontWeights.Normal;
+        TitleBlock.FontWeight = isActive ? FontWeights.SemiBold : FontWeights.Normal;
         if (!string.IsNullOrWhiteSpace(tab.Emoji))
         {
             EmojiBlock.Text = tab.Emoji;
@@ -41,51 +36,39 @@ public sealed partial class TabChip : UserControl
             ColorDot.Visibility = Visibility.Visible;
             ColorDot.Fill = new SolidColorBrush(ColorFromHex(tab.ColorHex));
         }
-        CloseButton.Visibility = isActive || _hovering ? Visibility.Visible : Visibility.Collapsed;
+        CloseButton.Visibility = isActive || _hovering ? Visibility.Visible : Visibility.Hidden;
         UpdateBackground();
-    }
-
-    public Brush BackgroundBrush
-    {
-        get
-        {
-            if (_tab is null) return new SolidColorBrush(Colors.Transparent);
-            var c = ColorFromHex(_tab.ColorHex);
-            byte alpha = _isActive ? (byte)0x47 : (_hovering ? (byte)0x29 : (byte)0x1A);
-            return new SolidColorBrush(Color.FromArgb(alpha, c.R, c.G, c.B));
-        }
     }
 
     private void UpdateBackground()
     {
-        Root.Background = BackgroundBrush;
+        if (_tab is null) return;
+        var c = ColorFromHex(_tab.ColorHex);
+        byte alpha = _isActive ? (byte)0x47 : (_hovering ? (byte)0x29 : (byte)0x1A);
+        Root.Background = new SolidColorBrush(Color.FromArgb(alpha, c.R, c.G, c.B));
     }
 
-    private void Root_PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    private void Root_MouseEnter(object sender, MouseEventArgs e)
     {
         _hovering = true;
         if (_tab is not null) Bind(_tab, _isActive);
     }
 
-    private void Root_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    private void Root_MouseLeave(object sender, MouseEventArgs e)
     {
         _hovering = false;
         if (_tab is not null) Bind(_tab, _isActive);
     }
 
-    private void Root_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    private void Root_Click(object sender, MouseButtonEventArgs e)
     {
         if (_tab is not null) Selected?.Invoke(this, _tab);
-    }
-
-    private void Root_DoubleTapped(object sender, Microsoft.UI.Xaml.Input.DoubleTappedRoutedEventArgs e)
-    {
-        // TODO: inline rename
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
         if (_tab is not null) Closed?.Invoke(this, _tab);
+        e.Handled = true;
     }
 
     public static Color ColorFromHex(string hex)

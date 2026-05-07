@@ -1,16 +1,14 @@
 using System;
-using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Windows;
+using System.Windows.Controls;
 using DanteCLI.ViewModels;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Windows.Storage.Pickers;
-using WinRT.Interop;
+using Microsoft.Win32;
 
 namespace DanteCLI.Views;
 
-public sealed partial class FilesSidebar : UserControl
+public partial class FilesSidebar : UserControl
 {
     public FilesSidebar()
     {
@@ -23,54 +21,73 @@ public sealed partial class FilesSidebar : UserControl
         var rootPath = AppState.Shared.Settings.FileBrowserRoot;
         if (string.IsNullOrWhiteSpace(rootPath) || !Directory.Exists(rootPath))
             rootPath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        RootLabel.Text = Path.GetFileName(rootPath.TrimEnd(Path.DirectorySeparatorChar));
-        if (string.IsNullOrEmpty(RootLabel.Text)) RootLabel.Text = rootPath;
+
+        RootLabel.Text = string.IsNullOrEmpty(Path.GetFileName(rootPath))
+            ? rootPath
+            : Path.GetFileName(rootPath.TrimEnd(Path.DirectorySeparatorChar));
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         RootPath.Text = rootPath.StartsWith(home, StringComparison.OrdinalIgnoreCase)
             ? "~" + rootPath[home.Length..]
             : rootPath;
 
-        Tree.RootNodes.Clear();
-        foreach (var node in BuildChildren(rootPath))
-            Tree.RootNodes.Add(node);
+        Tree.Items.Clear();
+        foreach (var item in BuildItems(rootPath))
+            Tree.Items.Add(item);
     }
 
-    private static System.Collections.Generic.IEnumerable<TreeViewNode> BuildChildren(string dir)
+    private static System.Collections.Generic.IEnumerable<TreeViewItem> BuildItems(string dir)
     {
-        IEnumerable<string> dirs;
-        IEnumerable<string> files;
+        string[] dirs, files;
         try
         {
-            dirs = Directory.EnumerateDirectories(dir).OrderBy(p => p, StringComparer.OrdinalIgnoreCase);
-            files = Directory.EnumerateFiles(dir).OrderBy(p => p, StringComparer.OrdinalIgnoreCase);
+            dirs = Directory.GetDirectories(dir);
+            files = Directory.GetFiles(dir);
         }
         catch (UnauthorizedAccessException) { yield break; }
+        Array.Sort(dirs, StringComparer.OrdinalIgnoreCase);
+        Array.Sort(files, StringComparer.OrdinalIgnoreCase);
 
         foreach (var d in dirs)
         {
-            var node = new TreeViewNode { Content = "📁 " + Path.GetFileName(d), HasUnrealizedChildren = true };
-            node.Children.Add(new TreeViewNode { Content = "..." });
-            yield return node;
+            var item = new TreeViewItem { Header = "📁 " + Path.GetFileName(d), Tag = d };
+            item.Items.Add(null);
+            item.Expanded += DirectoryItem_Expanded;
+            yield return item;
         }
         foreach (var f in files)
-            yield return new TreeViewNode { Content = "📄 " + Path.GetFileName(f) };
+        {
+            yield return new TreeViewItem { Header = "📄 " + Path.GetFileName(f), Tag = f };
+        }
     }
 
-    private async void ChooseRoot_Click(object sender, RoutedEventArgs e)
+    private static void DirectoryItem_Expanded(object sender, RoutedEventArgs e)
     {
-        var picker = new FolderPicker();
-        picker.FileTypeFilter.Add("*");
-        var hwnd = WindowNative.GetWindowHandle(App.Window);
-        InitializeWithWindow.Initialize(picker, hwnd);
-        var folder = await picker.PickSingleFolderAsync();
-        if (folder is not null)
+        if (sender is not TreeViewItem item) return;
+        if (item.Items.Count == 1 && item.Items[0] == null)
         {
-            AppState.Shared.Settings.FileBrowserRoot = folder.Path;
+            item.Items.Clear();
+            if (item.Tag is string path)
+            {
+                foreach (var child in BuildItems(path))
+                    item.Items.Add(child);
+            }
+        }
+        e.Handled = true;
+    }
+
+    private void ChooseRoot_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFolderDialog
+        {
+            Title = "Escolher pasta",
+            InitialDirectory = AppState.Shared.Settings.FileBrowserRoot
+        };
+        if (dlg.ShowDialog() == true)
+        {
+            AppState.Shared.Settings.FileBrowserRoot = dlg.FolderName;
             Refresh();
         }
     }
 
     private void Refresh_Click(object sender, RoutedEventArgs e) => Refresh();
-
-    private System.Collections.Generic.IEnumerable<TreeViewNode> Wrap(System.Collections.Generic.IEnumerable<TreeViewNode> seq) => seq;
 }

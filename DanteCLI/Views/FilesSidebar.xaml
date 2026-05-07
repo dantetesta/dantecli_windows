@@ -1,15 +1,12 @@
-<?xml version="1.0" encoding="utf-8"?>
-<UserControl
-    x:Class="DanteCLI.Views.FilesSidebar"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+<UserControl x:Class="DanteCLI.Views.FilesSidebar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-
-        <StackPanel Grid.Row="0" Padding="12,10" Spacing="4">
+        <StackPanel Grid.Row="0" Margin="12,8,12,4">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -18,17 +15,14 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="RootLabel" FontSize="12" FontWeight="SemiBold" />
                 <Button Grid.Column="1" Background="Transparent" BorderThickness="0"
-                        Click="ChooseRoot_Click" ToolTipService.ToolTip="Mudar pasta">
-                    <FontIcon Glyph="&#xE712;" FontSize="13" />
-                </Button>
+                        ToolTip="Mudar pasta" Click="ChooseRoot_Click" Content="📁" Width="28" />
                 <Button Grid.Column="2" Background="Transparent" BorderThickness="0"
-                        Click="Refresh_Click" ToolTipService.ToolTip="Recarregar">
-                    <FontIcon Glyph="&#xE72C;" FontSize="13" />
-                </Button>
+                        ToolTip="Recarregar" Click="Refresh_Click" Content="↻" Width="28" />
             </Grid>
-            <TextBlock x:Name="RootPath" FontSize="10" Opacity="0.6" TextTrimming="CharacterEllipsis" />
+            <TextBlock x:Name="RootPath" FontSize="10" Opacity="0.6"
+                       TextTrimming="CharacterEllipsis" />
         </StackPanel>
-
-        <TreeView x:Name="Tree" Grid.Row="1" SelectionMode="Single" Padding="0,0,0,8" />
+        <TreeView x:Name="Tree" Grid.Row="1" BorderThickness="0"
+                  Background="Transparent" Padding="0,0,0,8" />
     </Grid>
 </UserControl>

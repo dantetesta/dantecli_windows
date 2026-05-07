@@ -1,13 +1,13 @@
-using System.Collections.Generic;
+using System;
 using System.Linq;
+using System.Windows;
+using System.Windows.Controls;
 using DanteCLI.Models;
 using DanteCLI.ViewModels;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 
 namespace DanteCLI.Views;
 
-public sealed partial class FavoritesSidebar : UserControl
+public partial class FavoritesSidebar : UserControl
 {
     private string _query = "";
 
@@ -15,39 +15,40 @@ public sealed partial class FavoritesSidebar : UserControl
     {
         InitializeComponent();
         Loaded += (_, _) => Refresh();
-        AppState.Shared.Favorites.CollectionChanged += (_, _) => Refresh();
+        AppState.Shared.Favorites.CollectionChanged += (_, _) =>
+            Dispatcher.Invoke(Refresh);
     }
 
     private void Refresh()
     {
         var src = AppState.Shared.Favorites
             .Where(f => string.IsNullOrEmpty(_query)
-                        || f.Name.Contains(_query, System.StringComparison.OrdinalIgnoreCase)
-                        || f.Path.Contains(_query, System.StringComparison.OrdinalIgnoreCase)
-                        || f.Tags.Any(t => t.Contains(_query, System.StringComparison.OrdinalIgnoreCase)))
+                        || f.Name.Contains(_query, StringComparison.OrdinalIgnoreCase)
+                        || f.Path.Contains(_query, StringComparison.OrdinalIgnoreCase)
+                        || f.Tags.Any(t => t.Contains(_query, StringComparison.OrdinalIgnoreCase)))
             .Select(f => new FavoriteRowVM(f))
             .ToList();
         List.ItemsSource = src;
     }
 
-    private void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        _query = sender.Text ?? "";
+        _query = SearchBox.Text;
         Refresh();
     }
 
-    private void List_ItemClick(object sender, ItemClickEventArgs e)
+    private void List_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        if (e.ClickedItem is FavoriteRowVM vm)
-        {
-            AppState.Shared.OpenFavorite(vm.Source);
-        }
+        if (List.SelectedItem is FavoriteRowVM vm) AppState.Shared.OpenFavorite(vm.Source);
     }
 
     private void AddButton_Click(object sender, RoutedEventArgs e)
     {
-        // TODO: open editor sheet (next iteration)
-        var fav = new Favorite { Name = "Novo favorito", Path = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile) };
+        var fav = new Favorite
+        {
+            Name = "Novo favorito",
+            Path = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+        };
         AppState.Shared.Favorites.Add(fav);
     }
 
@@ -57,8 +58,6 @@ public sealed partial class FavoritesSidebar : UserControl
         public Favorite Source { get; }
         public string Name => Source.Name;
         public string DisplayPath => Source.DisplayPath;
-        public string Emoji => Source.Emoji ?? "";
-        public Visibility HasEmoji => string.IsNullOrEmpty(Source.Emoji) ? Visibility.Collapsed : Visibility.Visible;
-        public Visibility NoEmoji => string.IsNullOrEmpty(Source.Emoji) ? Visibility.Visible : Visibility.Collapsed;
+        public string Emoji => Source.Emoji ?? "📁";
     }
 }

@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # needed for releases
+  contents: write
 
 jobs:
   build:
@@ -17,132 +17,65 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [x64]   # add ARM64 once stable
-        configuration: [Release]
-
-    env:
-      Solution_Name: DanteCLI.sln
-      Project_Path: DanteCLI/DanteCLI.csproj
+        rid: [win-x64]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Generate .ico from PNG (pre-build)
+      - name: Generate .ico from PNG
         shell: pwsh
         run: |
           $src = "DanteCLI/Assets/icone-app.png"
           $dst = "DanteCLI/Assets/app.ico"
           if (Test-Path $src) {
               magick "$src" -define icon:auto-resize=256,128,64,48,32,16 "$dst"
-              Write-Host "Generated $dst"
           }
 
-      - name: Download runtime installers (VC++, WindowsAppRuntime, .NET 8 Desktop)
+      - name: Restore
+        run: dotnet restore DanteCLI/DanteCLI.csproj -r ${{ matrix.rid }}
+
+      - name: Publish single-file self-contained
+        run: |
+          dotnet publish DanteCLI/DanteCLI.csproj `
+            -c Release `
+            -r ${{ matrix.rid }} `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:DebugType=embedded `
+            -o publish/${{ matrix.rid }}
+
+      - name: Verify output
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path "installer/redist" -Force | Out-Null
+          Get-ChildItem publish/${{ matrix.rid }} | Where-Object { -not $_.PSIsContainer } |
+            Select-Object Name, @{N='Size(MB)';E={[math]::Round($_.Length / 1MB, 1)}} |
+            Format-Table -AutoSize
 
-          $vc = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
-          Invoke-WebRequest -Uri $vc -OutFile "installer/redist/vc_redist.x64.exe"
-
-          $war = "https://aka.ms/windowsappsdk/1.7/latest/windowsappruntimeinstall-x64.exe"
-          Invoke-WebRequest -Uri $war -OutFile "installer/redist/windowsappruntime.exe"
-
-          # .NET 8 Desktop Runtime (LTS, latest patch)
-          $dotnet = "https://builds.dotnet.microsoft.com/dotnet/Runtime/8.0.10/dotnet-runtime-8.0.10-win-x64.exe"
-          $dotnetDesktop = "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/8.0.10/windowsdesktop-runtime-8.0.10-win-x64.exe"
-          Invoke-WebRequest -Uri $dotnetDesktop -OutFile "installer/redist/windowsdesktop-runtime.exe"
-
-          Get-ChildItem installer/redist | Select-Object Name, Length
-
-      - name: Restore dependencies
-        run: msbuild $env:Project_Path /t:Restore /p:RuntimeIdentifier=win-${{ matrix.platform }} /p:Configuration=${{ matrix.configuration }} /p:Platform=${{ matrix.platform }}
-
-      - name: Publish self-contained (msbuild)
-        run: |
-          msbuild $env:Project_Path `
-            /t:Publish `
-            /p:Configuration=${{ matrix.configuration }} `
-            /p:Platform=${{ matrix.platform }} `
-            /p:RuntimeIdentifier=win-${{ matrix.platform }} `
-            /p:SelfContained=true `
-            /p:WindowsAppSDKSelfContained=true `
-            /p:WindowsPackageType=None `
-            /p:PublishSingleFile=false `
-            /p:PublishDir=publish\${{ matrix.platform }}\
-
-      - name: Verify output and list size
+      - name: Rename exe for clarity
         shell: pwsh
         run: |
-          $dir = "DanteCLI/publish/${{ matrix.platform }}"
-          if (-not (Test-Path $dir)) { $dir = "publish/${{ matrix.platform }}" }
-          "PUBLISH_DIR=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Get-ChildItem -Recurse $dir | Measure-Object -Sum Length |
-            ForEach-Object { "Total: {0:N1} MB" -f ($_.Sum / 1MB) }
-          Get-ChildItem $dir | Select-Object -First 8
+          Copy-Item "publish/${{ matrix.rid }}/DanteCLI.exe" "DanteCLI-${{ matrix.rid }}.exe" -Force
+          Get-Item "DanteCLI-${{ matrix.rid }}.exe" |
+            Select-Object Name, @{N='Size(MB)';E={[math]::Round($_.Length / 1MB, 1)}}
 
-      - name: Zip build output
-        shell: pwsh
-        run: |
-          Compress-Archive -Path "$env:PUBLISH_DIR/*" `
-                           -DestinationPath "DanteCLI-${{ matrix.platform }}.zip" `
-                           -Force
-
-      - name: Copy app.ico for installer
-        shell: pwsh
-        run: |
-          if (Test-Path "DanteCLI/Assets/app.ico") {
-              Copy-Item "DanteCLI/Assets/app.ico" "installer/app.ico" -Force
-          }
-
-      - name: Install Inno Setup
-        shell: pwsh
-        run: |
-          choco install innosetup --no-progress --confirm
-
-      - name: Build installer wizard
-        shell: pwsh
-        run: |
-          $publishAbs = (Resolve-Path "$env:PUBLISH_DIR").Path
-          # Inno script expects ..\publish\x64\* relative to installer/, so map it
-          $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          # Copy/rename publish output so the .iss can find it
-          if (-not (Test-Path "publish\${{ matrix.platform }}")) {
-              New-Item -ItemType Directory -Path "publish\${{ matrix.platform }}" -Force | Out-Null
-              Copy-Item -Recurse -Force "$publishAbs\*" "publish\${{ matrix.platform }}\"
-          }
-          & $isccPath "installer/setup.iss"
-          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
-          Get-ChildItem installer-output
-
-      - name: Upload zip artifact
+      - name: Upload single-file artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DanteCLI-${{ matrix.platform }}-portable
-          path: DanteCLI-${{ matrix.platform }}.zip
-          retention-days: 30
-
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: DanteCLI-${{ matrix.platform }}-installer
-          path: installer-output/DanteCLI-Setup-x64.exe
+          name: DanteCLI-${{ matrix.rid }}
+          path: DanteCLI-${{ matrix.rid }}.exe
           retention-days: 30
 
       - name: Create GitHub Release on tag
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            DanteCLI-${{ matrix.platform }}.zip
-            installer-output/DanteCLI-Setup-x64.exe
+          files: DanteCLI-${{ matrix.rid }}.exe
           generate_release_notes: true

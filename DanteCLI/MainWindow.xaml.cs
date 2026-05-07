@@ -1,14 +1,14 @@
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Windows;
+using System.Windows.Controls;
 using DanteCLI.Models;
 using DanteCLI.ViewModels;
 using DanteCLI.Views;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 
 namespace DanteCLI;
 
-public sealed partial class MainWindow : Window
+public partial class MainWindow : Window
 {
     private readonly Dictionary<TerminalTab, FrameworkElement> _tabBodies = new();
 
@@ -16,28 +16,25 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         Title = "DANTE CLI";
-        // Keep the system title bar (X / min / max) in its own strip — extending
-        // content into the title bar caused our [+] tab button to overlap with the
-        // close button. We can revisit with SetTitleBar() once the layout is solid.
 
         var state = AppState.Shared;
-
-        SidebarPicker.SelectionChanged += (_, _) =>
-        {
-            var tag = (SidebarPicker.SelectedItem as SelectorBarItem)?.Tag as string;
-            FavoritesPane.Visibility = tag == "files" ? Visibility.Collapsed : Visibility.Visible;
-            FilesPane.Visibility     = tag == "files" ? Visibility.Visible    : Visibility.Collapsed;
-        };
-
         state.Tabs.CollectionChanged += Tabs_CollectionChanged;
         state.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(AppState.ActiveTab))
-                ShowActiveTab();
+            if (e.PropertyName == nameof(AppState.ActiveTab)) ShowActiveTab();
         };
 
         RebuildTabStrip();
         ShowActiveTab();
+    }
+
+    private void Picker_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton rb && rb.Tag is string tag)
+        {
+            FavoritesPane.Visibility = tag == "files" ? Visibility.Collapsed : Visibility.Visible;
+            FilesPane.Visibility     = tag == "files" ? Visibility.Visible    : Visibility.Collapsed;
+        }
     }
 
     private void Tabs_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -69,7 +66,6 @@ public sealed partial class MainWindow : Window
 
         if (!_tabBodies.TryGetValue(state.ActiveTab, out var body))
         {
-            // Phase 1: terminal-only (editor coming in Phase 4 mirror)
             var view = new TerminalView();
             view.Bind(state.ActiveTab);
             body = view;
