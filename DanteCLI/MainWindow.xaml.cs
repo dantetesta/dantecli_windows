@@ -122,10 +122,15 @@ public partial class MainWindow : Window
                 if (body is TerminalView t) _ = t.ForceShutdownAsync();
             }
             _tabBodies.Remove(tab);
-            if (_chromes.TryGetValue(tab, out var chrome))
+            if (_headers.TryGetValue(tab, out var hd))
             {
-                TabsCanvas.Children.Remove(chrome);
-                _chromes.Remove(tab);
+                TabsCanvas.Children.Remove(hd);
+                _headers.Remove(tab);
+            }
+            if (_borders.TryGetValue(tab, out var bd))
+            {
+                TabsCanvas.Children.Remove(bd);
+                _borders.Remove(tab);
             }
         }
     }
