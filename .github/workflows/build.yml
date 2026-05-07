@@ -36,6 +36,24 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
+      - name: Generate .ico from PNG (pre-build)
+        shell: pwsh
+        run: |
+          $src = "DanteCLI/Assets/icone-app.png"
+          $dst = "DanteCLI/Assets/app.ico"
+          if (Test-Path $src) {
+              magick "$src" -define icon:auto-resize=256,128,64,48,32,16 "$dst"
+              Write-Host "Generated $dst"
+          }
+
+      - name: Download VC++ Redistributable
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "installer/redist" -Force | Out-Null
+          $url = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+          Invoke-WebRequest -Uri $url -OutFile "installer/redist/vc_redist.x64.exe"
+          Get-Item "installer/redist/vc_redist.x64.exe" | Select-Object Name, Length
+
       - name: Restore dependencies
         run: msbuild $env:Project_Path /t:Restore /p:RuntimeIdentifier=win-${{ matrix.platform }} /p:Configuration=${{ matrix.configuration }} /p:Platform=${{ matrix.platform }}
 
@@ -69,17 +87,11 @@ jobs:
                            -DestinationPath "DanteCLI-${{ matrix.platform }}.zip" `
                            -Force
 
-      - name: Generate app.ico from PNG
+      - name: Copy app.ico for installer
         shell: pwsh
         run: |
-          $src = "DanteCLI/Assets/icone-app.png"
-          $dst = "installer/app.ico"
-          if (Test-Path $src) {
-              magick "$src" -define icon:auto-resize=256,128,64,48,32,16 "$dst"
-              Write-Host "Generated $dst"
-          } else {
-              Write-Host "PNG not found; creating empty placeholder"
-              New-Item -Path $dst -ItemType File -Force | Out-Null
+          if (Test-Path "DanteCLI/Assets/app.ico") {
+              Copy-Item "DanteCLI/Assets/app.ico" "installer/app.ico" -Force
           }
 
       - name: Install Inno Setup
