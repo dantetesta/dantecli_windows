@@ -14,7 +14,8 @@ public partial class App : Application
     {
         Log("App ctor");
         AppDomain.CurrentDomain.UnhandledException += (s, e) => Log($"UnhandledException: {e.ExceptionObject}");
-        TaskScheduler.UnobservedTaskException += (s, e) => Log($"UnobservedTaskException: {e.Exception}");
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (s, e) =>
+            Log($"UnobservedTaskException: {e.Exception}");
         UnhandledException += (s, e) =>
         {
             Log($"UnhandledException (UI): {e.Message}\n{e.Exception}");
@@ -59,12 +60,3 @@ public partial class App : Application
     }
 }
 
-// Re-export for unhandled task exception capture
-internal static class TaskScheduler
-{
-    public static event System.Threading.Tasks.UnobservedTaskExceptionEventHandler UnobservedTaskException
-    {
-        add => System.Threading.Tasks.TaskScheduler.UnobservedTaskException += value;
-        remove => System.Threading.Tasks.TaskScheduler.UnobservedTaskException -= value;
-    }
-}
