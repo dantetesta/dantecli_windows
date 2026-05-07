@@ -3,16 +3,19 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Background="#1A1B26" Focusable="True">
     <Grid Margin="10">
-        <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Hidden" Background="Transparent"
-                      PreviewMouseWheel="Scroller_PreviewMouseWheel">
-            <RichTextBox x:Name="OutputView" Background="Transparent" BorderThickness="0"
-                         Foreground="#C0CAF5" IsReadOnly="True"
-                         FontFamily="Cascadia Mono, Consolas, Courier New" FontSize="13"
-                         Padding="0" />
-        </ScrollViewer>
-        <Border x:Name="InputCapture" Background="Transparent" Focusable="True"
-                IsHitTestVisible="True" PreviewKeyDown="InputCapture_PreviewKeyDown"
-                PreviewTextInput="InputCapture_PreviewTextInput" />
+        <TextBox x:Name="OutputView"
+                 Background="Transparent" BorderThickness="0"
+                 Foreground="#C0CAF5" CaretBrush="#7AA2F7"
+                 SelectionBrush="#3E456A"
+                 IsReadOnly="True"
+                 IsReadOnlyCaretVisible="True"
+                 AcceptsReturn="True" AcceptsTab="True"
+                 TextWrapping="NoWrap"
+                 VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Auto"
+                 FontFamily="Cascadia Mono, Consolas, Courier New"
+                 FontSize="13" Padding="0"
+                 PreviewKeyDown="Output_PreviewKeyDown"
+                 PreviewTextInput="Output_PreviewTextInput" />
     </Grid>
 </UserControl>

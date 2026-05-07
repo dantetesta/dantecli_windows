@@ -1,5 +1,8 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using DanteCLI.Models;
@@ -24,8 +27,30 @@ public partial class MainWindow : Window
             if (e.PropertyName == nameof(AppState.ActiveTab)) ShowActiveTab();
         };
 
+        Closing += MainWindow_Closing;
+
         RebuildTabStrip();
         ShowActiveTab();
+    }
+
+    private async void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        // Tear down all live terminal sessions before unwinding the dispatcher.
+        var terminals = _tabBodies.Values.OfType<TerminalView>().ToList();
+        if (terminals.Count == 0) return;
+
+        e.Cancel = true; // wait for cleanup, then close ourselves
+        Closing -= MainWindow_Closing;
+        try
+        {
+            await Task.WhenAll(terminals.Select(t => t.ForceShutdownAsync()));
+        }
+        catch { }
+        finally
+        {
+            // Re-trigger close once cleanup is done (no longer cancelled).
+            Application.Current.Dispatcher.BeginInvoke(new Action(Close));
+        }
     }
 
     private void Picker_Click(object sender, RoutedEventArgs e)
