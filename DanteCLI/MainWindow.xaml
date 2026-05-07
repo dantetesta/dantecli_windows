@@ -61,6 +61,11 @@
             <Border Grid.Row="0" BorderBrush="{StaticResource DividerBrush}"
                     BorderThickness="0,0,0,1" Padding="6,6">
                 <DockPanel>
+                    <Button DockPanel.Dock="Left" Content="⚙" FontSize="14"
+                            Background="Transparent" BorderThickness="0" Padding="8,4"
+                            ToolTip="Configurações" Cursor="Hand"
+                            Click="SettingsButton_Click" />
+                    <views:MicButton DockPanel.Dock="Left" />
                     <views:AILauncherToolbar x:Name="AIToolbar" DockPanel.Dock="Right" />
                 </DockPanel>
             </Border>

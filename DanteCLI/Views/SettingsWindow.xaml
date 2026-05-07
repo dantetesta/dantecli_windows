@@ -1,0 +1,55 @@
+<Window x:Class="DanteCLI.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Settings — DANTE CLI" Height="480" Width="540"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize">
+    <Grid Margin="20">
+        <TabControl>
+            <TabItem Header="Voz">
+                <StackPanel Margin="14">
+                    <TextBlock Text="Groq Whisper API" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,8" />
+
+                    <DockPanel Margin="0,0,0,8">
+                        <TextBlock Text="API Key" Width="100" VerticalAlignment="Center" />
+                        <PasswordBox x:Name="ApiKeyBox" Padding="6,4" />
+                    </DockPanel>
+
+                    <TextBlock Margin="100,0,0,12">
+                        <Hyperlink x:Name="GroqLink" NavigateUri="https://console.groq.com/keys"
+                                   RequestNavigate="Hyperlink_RequestNavigate">
+                            Criar API key gratuita em console.groq.com
+                        </Hyperlink>
+                    </TextBlock>
+
+                    <DockPanel Margin="0,0,0,8">
+                        <TextBlock Text="Modelo" Width="100" VerticalAlignment="Center" />
+                        <ComboBox x:Name="ModelBox" Padding="6,3">
+                            <ComboBoxItem Content="whisper-large-v3-turbo (rápido, ~$0.04/h)" Tag="whisper-large-v3-turbo" />
+                            <ComboBoxItem Content="whisper-large-v3 (precisão máxima, ~$0.11/h)" Tag="whisper-large-v3" />
+                        </ComboBox>
+                    </DockPanel>
+
+                    <DockPanel Margin="0,0,0,8">
+                        <TextBlock Text="Idioma (ISO-639)" Width="100" VerticalAlignment="Center" />
+                        <TextBox x:Name="LangBox" Padding="6,4" Width="80" HorizontalAlignment="Left" />
+                    </DockPanel>
+
+                    <CheckBox x:Name="AutoSubmitBox" Content="Submeter automaticamente (Enter após injetar)"
+                              Margin="100,8,0,0" />
+
+                    <TextBlock Margin="0,16,0,0" TextWrapping="Wrap" Foreground="#666" FontSize="11">
+                        Click no botão de microfone na toolbar para começar a gravar. Click de novo para parar — o áudio é enviado para o Groq Whisper e a transcrição é injetada na aba ativa do terminal.
+                        Free tier do Groq: 6.000 minutos/dia.
+                    </TextBlock>
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+
+        <DockPanel VerticalAlignment="Bottom" LastChildFill="False" Margin="0,12,0,0">
+            <Button DockPanel.Dock="Right" Content="Salvar" Padding="14,6" Margin="6,0,0,0"
+                    Click="Save_Click" IsDefault="True" />
+            <Button DockPanel.Dock="Right" Content="Cancelar" Padding="14,6"
+                    IsCancel="True" Click="Cancel_Click" />
+        </DockPanel>
+    </Grid>
+</Window>

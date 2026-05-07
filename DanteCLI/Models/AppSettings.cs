@@ -30,4 +30,10 @@ public sealed class AppSettings
     public bool UseCustomColors { get; set; } = false;
 
     public List<string> RecentEmojis { get; set; } = new();
+
+    // Voice transcription
+    public string GroqApiKey { get; set; } = "";
+    public string VoiceLanguage { get; set; } = "pt";
+    public bool VoiceAutoSubmit { get; set; } = false;
+    public string VoiceModel { get; set; } = "whisper-large-v3-turbo";
 }

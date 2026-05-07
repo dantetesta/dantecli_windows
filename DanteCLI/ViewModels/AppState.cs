@@ -257,6 +257,9 @@ public sealed class AppState : INotifyPropertyChanged
 
     public event EventHandler<string>? InjectIntoActiveTerminal;
 
+    public void RaiseInjectIntoActiveTerminal(string text) =>
+        InjectIntoActiveTerminal?.Invoke(this, text);
+
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnChanged([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
