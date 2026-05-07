@@ -4,7 +4,8 @@
              Cursor="Hand">
     <Border x:Name="Root" CornerRadius="6" Padding="10,5" Margin="3,0"
             MouseEnter="Root_MouseEnter" MouseLeave="Root_MouseLeave"
-            MouseLeftButtonUp="Root_Click" MouseDoubleClick="Root_DoubleClick">
+            PreviewMouseLeftButtonDown="Root_PreviewMouseDown"
+            MouseLeftButtonUp="Root_Click">
         <StackPanel Orientation="Horizontal">
             <TextBlock x:Name="EmojiBlock" FontSize="13" Margin="0,0,6,0" Visibility="Collapsed" />
             <Ellipse x:Name="ColorDot" Width="9" Height="9" Margin="0,0,6,0" />

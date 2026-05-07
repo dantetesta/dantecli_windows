@@ -69,16 +69,19 @@ public partial class TabChip : UserControl
         _hovering = false; Render();
     }
 
+    private void Root_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 2)
+        {
+            StartRename();
+            e.Handled = true;
+        }
+    }
+
     private void Root_Click(object sender, MouseButtonEventArgs e)
     {
         if (TitleEdit.Visibility == Visibility.Visible) return;
         if (_tab is not null) Selected?.Invoke(this, _tab);
-    }
-
-    private void Root_DoubleClick(object sender, MouseButtonEventArgs e)
-    {
-        StartRename();
-        e.Handled = true;
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
