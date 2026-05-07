@@ -69,16 +69,58 @@ jobs:
                            -DestinationPath "DanteCLI-${{ matrix.platform }}.zip" `
                            -Force
 
+      - name: Generate app.ico from PNG
+        shell: pwsh
+        run: |
+          $src = "DanteCLI/Assets/icone-app.png"
+          $dst = "installer/app.ico"
+          if (Test-Path $src) {
+              magick "$src" -define icon:auto-resize=256,128,64,48,32,16 "$dst"
+              Write-Host "Generated $dst"
+          } else {
+              Write-Host "PNG not found; creating empty placeholder"
+              New-Item -Path $dst -ItemType File -Force | Out-Null
+          }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress --confirm
+
+      - name: Build installer wizard
+        shell: pwsh
+        run: |
+          $publishAbs = (Resolve-Path "$env:PUBLISH_DIR").Path
+          # Inno script expects ..\publish\x64\* relative to installer/, so map it
+          $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          # Copy/rename publish output so the .iss can find it
+          if (-not (Test-Path "publish\${{ matrix.platform }}")) {
+              New-Item -ItemType Directory -Path "publish\${{ matrix.platform }}" -Force | Out-Null
+              Copy-Item -Recurse -Force "$publishAbs\*" "publish\${{ matrix.platform }}\"
+          }
+          & $isccPath "installer/setup.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
+          Get-ChildItem installer-output
+
       - name: Upload zip artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DanteCLI-${{ matrix.platform }}
+          name: DanteCLI-${{ matrix.platform }}-portable
           path: DanteCLI-${{ matrix.platform }}.zip
+          retention-days: 30
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DanteCLI-${{ matrix.platform }}-installer
+          path: installer-output/DanteCLI-Setup-x64.exe
           retention-days: 30
 
       - name: Create GitHub Release on tag
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: DanteCLI-${{ matrix.platform }}.zip
+          files: |
+            DanteCLI-${{ matrix.platform }}.zip
+            installer-output/DanteCLI-Setup-x64.exe
           generate_release_notes: true
