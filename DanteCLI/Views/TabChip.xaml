@@ -39,24 +39,11 @@
                     <MenuItem Header="Pink"     Click="ColorMenu_Click" Tag="#FF375F" />
                     <MenuItem Header="Brown"    Click="ColorMenu_Click" Tag="#AC8E68" />
                 </MenuItem>
-                <MenuItem Header="Emoji">
-                    <MenuItem Header="💻" Click="EmojiMenu_Click" Tag="💻" />
-                    <MenuItem Header="🤖" Click="EmojiMenu_Click" Tag="🤖" />
-                    <MenuItem Header="🚀" Click="EmojiMenu_Click" Tag="🚀" />
-                    <MenuItem Header="🐳" Click="EmojiMenu_Click" Tag="🐳" />
-                    <MenuItem Header="🛠️" Click="EmojiMenu_Click" Tag="🛠️" />
-                    <MenuItem Header="📦" Click="EmojiMenu_Click" Tag="📦" />
-                    <MenuItem Header="🔥" Click="EmojiMenu_Click" Tag="🔥" />
-                    <MenuItem Header="🧪" Click="EmojiMenu_Click" Tag="🧪" />
-                    <MenuItem Header="⚡️" Click="EmojiMenu_Click" Tag="⚡️" />
-                    <MenuItem Header="🌐" Click="EmojiMenu_Click" Tag="🌐" />
-                    <MenuItem Header="🎨" Click="EmojiMenu_Click" Tag="🎨" />
-                    <MenuItem Header="🎯" Click="EmojiMenu_Click" Tag="🎯" />
-                    <Separator />
-                    <MenuItem Header="Limpar emoji" Click="EmojiMenu_Click" Tag="" />
-                </MenuItem>
+                <MenuItem Header="Emoji…" Click="EmojiPickerMenu_Click" />
                 <Separator />
                 <MenuItem Header="⭐ Adicionar aos Favoritos" Click="FavoriteMenu_Click" />
+                <MenuItem x:Name="AddToSplitMenuItem" Header="🪟 Adicionar ao Split atual"
+                          Click="AddToSplitMenu_Click" Visibility="Collapsed" />
                 <MenuItem Header="Duplicar" Click="DuplicateMenu_Click" />
                 <Separator />
                 <MenuItem Header="Fechar aba" Click="CloseMenu_Click" />

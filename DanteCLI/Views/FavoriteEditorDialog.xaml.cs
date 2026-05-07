@@ -38,10 +38,22 @@ public partial class FavoriteEditorDialog : Window
 
         NameBox.Text = Result.Name;
         PathBox.Text = Result.Path;
-        EmojiBox.Text = Result.Emoji ?? "";
+        EmojiPreview.Text = string.IsNullOrEmpty(Result.Emoji) ? "🙂" : Result.Emoji;
+        EmojiPreview.Opacity = string.IsNullOrEmpty(Result.Emoji) ? 0.4 : 1.0;
         CommandBox.Text = Result.InitialCommand ?? "";
         BuildPalette();
         RefreshTags();
+    }
+
+    private void EmojiPickerButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new EmojiPickerWindow { Owner = this };
+        if (dlg.ShowDialog() == true)
+        {
+            Result.Emoji = dlg.Selected;
+            EmojiPreview.Text = string.IsNullOrEmpty(Result.Emoji) ? "🙂" : Result.Emoji;
+            EmojiPreview.Opacity = string.IsNullOrEmpty(Result.Emoji) ? 0.4 : 1.0;
+        }
     }
 
     private void BuildPalette()
@@ -128,7 +140,7 @@ public partial class FavoriteEditorDialog : Window
     {
         Result.Name = NameBox.Text.Trim();
         Result.Path = PathBox.Text.Trim();
-        Result.Emoji = string.IsNullOrEmpty(EmojiBox.Text) ? null : EmojiBox.Text;
+        // Emoji is updated by EmojiPickerButton_Click; nothing else to do here.
         Result.InitialCommand = string.IsNullOrEmpty(CommandBox.Text) ? null : CommandBox.Text;
         if (string.IsNullOrEmpty(Result.Name) || string.IsNullOrEmpty(Result.Path))
         {

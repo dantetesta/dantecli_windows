@@ -139,13 +139,102 @@ public sealed class AppState : INotifyPropertyChanged
 
     public void EnterSplitWorkspace(IEnumerable<Guid> ids, SplitLayout layout)
     {
-        var trimmed = ids.Take(layout.Capacity).ToList();
-        if (trimmed.Count < 2) return;
-        SplitWorkspace = new SplitWorkspace(trimmed, layout);
-        if (Tabs.FirstOrDefault(t => t.Id == trimmed[0]) is { } first) ActiveTab = first;
+        var list = ids.Take(layout.Capacity).ToList();
+        if (list.Count < 1) return;
+        // Auto-fill remaining slots with fresh shells.
+        while (list.Count < layout.Capacity)
+        {
+            var t = NewTab(title: "shell", path: Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+            list.Add(t.Id);
+        }
+        SplitWorkspace = new SplitWorkspace(list, layout);
+        if (Tabs.FirstOrDefault(t => t.Id == list[0]) is { } first) ActiveTab = first;
     }
 
     public void ExitSplitWorkspace() => SplitWorkspace = null;
+
+    public int SplitWorkspaceVacantSlots
+    {
+        get
+        {
+            if (SplitWorkspace is not { } ws) return 0;
+            var live = Tabs.Select(t => t.Id).ToHashSet();
+            return ws.TabIds.Count(id => !live.Contains(id));
+        }
+    }
+
+    public bool SplitWorkspaceHasVacantSlot => SplitWorkspaceVacantSlots > 0;
+
+    public bool TabIsInSplit(Guid tabId) =>
+        SplitWorkspace?.TabIds.Contains(tabId) == true;
+
+    /// <summary>Insert tab at first vacant slot of active workspace (no-op if none).</summary>
+    public void AddTabToSplit(Guid tabId)
+    {
+        if (SplitWorkspace is not { } ws) return;
+        var live = Tabs.Select(t => t.Id).ToHashSet();
+        var ids = ws.TabIds.ToList();
+        var slot = ids.FindIndex(id => !live.Contains(id));
+        if (slot < 0) return;
+        ids[slot] = tabId;
+        SplitWorkspace = new SplitWorkspace(ids, ws.Layout);
+        if (Tabs.FirstOrDefault(t => t.Id == tabId) is { } t) ActiveTab = t;
+    }
+
+    public void SwapSplitSlots(Guid a, Guid b)
+    {
+        if (SplitWorkspace is not { } ws) return;
+        var ids = ws.TabIds.ToList();
+        var i = ids.IndexOf(a);
+        var j = ids.IndexOf(b);
+        if (i < 0 || j < 0 || i == j) return;
+        (ids[i], ids[j]) = (ids[j], ids[i]);
+        SplitWorkspace = new SplitWorkspace(ids, ws.Layout);
+    }
+
+    public void PlaceAtVacantSlot(Guid tabId, Guid vacantSlotId)
+    {
+        if (SplitWorkspace is not { } ws) return;
+        var ids = ws.TabIds.ToList();
+        var target = ids.IndexOf(vacantSlotId);
+        if (target < 0) return;
+        var current = ids.IndexOf(tabId);
+        if (current >= 0)
+            (ids[current], ids[target]) = (ids[target], ids[current]);
+        else
+            ids[target] = tabId;
+        SplitWorkspace = new SplitWorkspace(ids, ws.Layout);
+        if (Tabs.FirstOrDefault(t => t.Id == tabId) is { } t) ActiveTab = t;
+    }
+
+    /// <summary>Remove tab from workspace (slot becomes vacant) without closing the tab.</summary>
+    public void RemoveFromSplit(Guid tabId)
+    {
+        if (SplitWorkspace is not { } ws) return;
+        var ids = ws.TabIds.ToList();
+        var i = ids.IndexOf(tabId);
+        if (i < 0) return;
+        ids[i] = Guid.NewGuid(); // dead UUID renders as vacant
+        SplitWorkspace = new SplitWorkspace(ids, ws.Layout);
+        if (ActiveTab?.Id == tabId)
+        {
+            var live = Tabs.Select(t => t.Id).ToHashSet();
+            var alive = ids.FirstOrDefault(id => live.Contains(id));
+            if (Tabs.FirstOrDefault(t => t.Id == alive) is { } t) ActiveTab = t;
+        }
+    }
+
+    public void RememberEmoji(string emoji)
+    {
+        if (string.IsNullOrEmpty(emoji)) return;
+        var s = Settings;
+        var list = new List<string>(s.RecentEmojis);
+        list.RemoveAll(e => e == emoji);
+        list.Insert(0, emoji);
+        if (list.Count > 32) list = list.Take(32).ToList();
+        s.RecentEmojis = list;
+        Settings = s;
+    }
 
     // -------- AI launch --------
 

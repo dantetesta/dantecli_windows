@@ -19,9 +19,14 @@ namespace DanteCLI;
 public partial class MainWindow : Window
 {
     /// Live UserControl for each tab. Key stays alive as long as tab exists in AppState.
+    private const double WorkspaceHeaderHeight = 26;
     private readonly Dictionary<TerminalTab, FrameworkElement> _tabBodies = new();
-    /// Chrome overlays (header + border) for workspace cells, keyed by tab.
-    private readonly Dictionary<TerminalTab, FrameworkElement> _chromes = new();
+    /// Header overlays (live tabs in workspace), keyed by tab.
+    private readonly Dictionary<TerminalTab, WorkspaceHeader> _headers = new();
+    /// Border overlays per cell (drawn around full cell, not interactive).
+    private readonly Dictionary<TerminalTab, Border> _borders = new();
+    /// Vacant-slot placeholders, keyed by the dead UUID in workspace.TabIds.
+    private readonly Dictionary<Guid, FrameworkElement> _vacantSlots = new();
 
     public MainWindow()
     {
@@ -135,9 +140,7 @@ public partial class MainWindow : Window
         double h = TabsCanvas.ActualHeight;
         if (w <= 0 || h <= 0) return;
 
-        // Synchronize chromes with workspace tabs
-        SyncChromes();
-
+        // Place tab bodies
         foreach (var tab in state.Tabs)
         {
             if (!_tabBodies.TryGetValue(tab, out var body)) continue;
@@ -145,40 +148,132 @@ public partial class MainWindow : Window
             PlaceAt(body, rect);
         }
 
-        if (state.SplitWorkspace is { } ws)
+        // Sync chrome (headers + borders + vacant placeholders) with active workspace
+        SyncWorkspaceOverlays(w, h);
+    }
+
+    private void SyncWorkspaceOverlays(double width, double height)
+    {
+        var state = AppState.Shared;
+
+        // Hide all when not in workspace
+        if (state.SplitWorkspace is null)
         {
-            for (int i = 0; i < ws.TabIds.Count; i++)
+            foreach (var hd in _headers.Values) hd.Visibility = Visibility.Collapsed;
+            foreach (var bd in _borders.Values) bd.Visibility = Visibility.Collapsed;
+            foreach (var vs in _vacantSlots.Values) vs.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var ws = state.SplitWorkspace;
+        var liveById = state.Tabs.ToDictionary(t => t.Id);
+        var seenTabs = new HashSet<TerminalTab>();
+        var seenVacantIds = new HashSet<Guid>();
+
+        for (int i = 0; i < ws.TabIds.Count; i++)
+        {
+            var id = ws.TabIds[i];
+            var cell = WorkspaceCellFrame(i, width, height, ws.Layout);
+            if (liveById.TryGetValue(id, out var tab))
             {
-                var id = ws.TabIds[i];
-                var tab = state.Tabs.FirstOrDefault(t => t.Id == id);
-                if (tab is null) continue;
-                if (!_chromes.TryGetValue(tab, out var chrome)) continue;
-                var cell = WorkspaceCellFrame(i, w, h, ws.Layout);
-                PlaceAt(chrome, cell);
-                ((WorkspaceChrome)chrome).Render(tab, isFocused: state.ActiveTab == tab);
-                chrome.Visibility = Visibility.Visible;
+                seenTabs.Add(tab);
+                // Header
+                if (!_headers.TryGetValue(tab, out var hd))
+                {
+                    hd = new WorkspaceHeader(tab);
+                    _headers[tab] = hd;
+                    TabsCanvas.Children.Add(hd);
+                    Panel.SetZIndex(hd, 2);
+                }
+                hd.Render(tab, isFocused: state.ActiveTab == tab);
+                PlaceAt(hd, new Rect(cell.X, cell.Y, cell.Width, WorkspaceHeaderHeight));
+                hd.Visibility = Visibility.Visible;
+
+                // Border
+                if (!_borders.TryGetValue(tab, out var bd))
+                {
+                    bd = new Border
+                    {
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new CornerRadius(4),
+                        IsHitTestVisible = false,
+                    };
+                    _borders[tab] = bd;
+                    TabsCanvas.Children.Add(bd);
+                    Panel.SetZIndex(bd, 3);
+                }
+                var focused = state.ActiveTab == tab;
+                bd.BorderBrush = focused
+                    ? new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF))
+                    : new SolidColorBrush(Color.FromArgb(0x66, 0x88, 0x88, 0x88));
+                bd.BorderThickness = new Thickness(focused ? 2 : 1);
+                PlaceAt(bd, cell);
+                bd.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                seenVacantIds.Add(id);
+                if (!_vacantSlots.TryGetValue(id, out var vs))
+                {
+                    vs = MakeVacantSlot(id);
+                    _vacantSlots[id] = vs;
+                    TabsCanvas.Children.Add(vs);
+                    Panel.SetZIndex(vs, 1);
+                }
+                PlaceAt(vs, cell);
+                vs.Visibility = Visibility.Visible;
             }
         }
-        else
+
+        // Remove headers/borders for tabs no longer in workspace
+        foreach (var (tab, hd) in _headers.Where(kv => !seenTabs.Contains(kv.Key)).ToList())
         {
-            foreach (var ch in _chromes.Values) ch.Visibility = Visibility.Collapsed;
+            TabsCanvas.Children.Remove(hd);
+            _headers.Remove(tab);
+        }
+        foreach (var (tab, bd) in _borders.Where(kv => !seenTabs.Contains(kv.Key)).ToList())
+        {
+            TabsCanvas.Children.Remove(bd);
+            _borders.Remove(tab);
+        }
+        // Remove vacant slots no longer present
+        foreach (var (vid, vs) in _vacantSlots.Where(kv => !seenVacantIds.Contains(kv.Key)).ToList())
+        {
+            TabsCanvas.Children.Remove(vs);
+            _vacantSlots.Remove(vid);
         }
     }
 
-    private void SyncChromes()
+    private FrameworkElement MakeVacantSlot(Guid slotId)
     {
-        var state = AppState.Shared;
-        var workspaceTabs = state.SplitWorkspace?.TabIds.ToHashSet() ?? new HashSet<Guid>();
-        // Add chromes for workspace tabs
-        foreach (var tab in state.Tabs.Where(t => workspaceTabs.Contains(t.Id)))
+        var border = new Border
         {
-            if (_chromes.ContainsKey(tab)) continue;
-            var chrome = new WorkspaceChrome(tab, () => state.ActiveTab = tab);
-            _chromes[tab] = chrome;
-            TabsCanvas.Children.Add(chrome);
-            // Make sure chrome is on top of the body
-            Panel.SetZIndex(chrome, 1);
-        }
+            CornerRadius = new CornerRadius(4),
+            Background = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x66, 0xCC, 0xCC, 0xCC)),
+            BorderThickness = new Thickness(1),
+            AllowDrop = true,
+            Tag = slotId,
+        };
+        var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
+        stack.Children.Add(new TextBlock { Text = "➕", FontSize = 24, HorizontalAlignment = HorizontalAlignment.Center, Opacity = 0.5 });
+        stack.Children.Add(new TextBlock { Text = "Slot vazio", FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, Foreground = Brushes.Gray, Margin = new Thickness(0, 4, 0, 0) });
+        stack.Children.Add(new TextBlock { Text = "Arraste outra aba pra cá", FontSize = 9, HorizontalAlignment = HorizontalAlignment.Center, Foreground = Brushes.Gray, Opacity = 0.7, Margin = new Thickness(0, 2, 0, 0) });
+        border.Child = stack;
+        border.Drop += (_, e) =>
+        {
+            if (e.Data.GetData("DanteSplitTabId") is string s && Guid.TryParse(s, out var src))
+                AppState.Shared.PlaceAtVacantSlot(src, slotId);
+        };
+        border.DragEnter += (_, e) =>
+        {
+            e.Effects = e.Data.GetDataPresent("DanteSplitTabId") ? DragDropEffects.Move : DragDropEffects.None;
+            border.Background = new SolidColorBrush(Color.FromArgb(0x33, 0x0A, 0x84, 0xFF));
+            e.Handled = true;
+        };
+        border.DragLeave += (_, _) =>
+            border.Background = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF));
+        return border;
     }
 
     private static void PlaceAt(FrameworkElement element, Rect rect)
@@ -198,8 +293,15 @@ public partial class MainWindow : Window
         {
             var idx = ws.TabIds.ToList().IndexOf(tab.Id);
             if (idx >= 0)
-                return WorkspaceCellFrame(idx, w, h, ws.Layout);
-            // Off-workspace: hidden via zero-size + offscreen
+            {
+                var cell = WorkspaceCellFrame(idx, w, h, ws.Layout);
+                // Reserve header strip at the top of the cell
+                return new Rect(cell.X,
+                                cell.Y + WorkspaceHeaderHeight,
+                                cell.Width,
+                                Math.Max(0, cell.Height - WorkspaceHeaderHeight));
+            }
+            // Off-workspace: offscreen
             return new Rect(-w - 100, 0, w, h);
         }
         if (state.ActiveTab == tab)
@@ -245,64 +347,114 @@ public partial class MainWindow : Window
     }
 }
 
-/// <summary>Header bar + border overlay for a workspace cell.</summary>
-public sealed class WorkspaceChrome : Grid
+/// <summary>Opaque, colored header bar for a single workspace cell. Drag handle,
+/// title, ATIVO badge, and a "remove from split" button (which keeps the tab alive).</summary>
+public sealed class WorkspaceHeader : Border
 {
-    private readonly Border _headerBorder;
     private readonly TextBlock _emojiBlock;
     private readonly System.Windows.Shapes.Ellipse _colorDot;
     private readonly TextBlock _titleBlock;
     private readonly Border _activeBadge;
-    private readonly Border _borderShape;
+    private readonly TextBlock _activeBadgeText;
+    private readonly Button _removeButton;
+    private readonly TextBlock _dragHandle;
+    private TerminalTab? _tab;
+    private Point _dragStart;
 
-    public WorkspaceChrome(TerminalTab tab, Action onHeaderClick)
+    public WorkspaceHeader(TerminalTab tab)
     {
-        IsHitTestVisible = true;
+        _tab = tab;
+        Padding = new Thickness(8, 0, 4, 0);
+        Cursor = Cursors.Hand;
+        AllowDrop = true;
 
-        // Border overlay (visual only, behind everything)
-        _borderShape = new Border
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        _dragHandle = new TextBlock
         {
-            CornerRadius = new CornerRadius(4),
-            BorderThickness = new Thickness(1),
-            BorderBrush = Brushes.Transparent,
-            IsHitTestVisible = false,
+            Text = "⋮⋮",
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0),
+            Opacity = 0.7,
         };
-        Children.Add(_borderShape);
+        Grid.SetColumn(_dragHandle, 0);
+        grid.Children.Add(_dragHandle);
 
-        // Header bar at the top
-        var stack = new StackPanel { Orientation = Orientation.Horizontal };
-        _emojiBlock = new TextBlock { FontSize = 11, Margin = new Thickness(0,0,5,0), VerticalAlignment = VerticalAlignment.Center };
-        _colorDot = new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, Margin = new Thickness(0,0,5,0), VerticalAlignment = VerticalAlignment.Center };
-        _titleBlock = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        _emojiBlock = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0) };
+        Grid.SetColumn(_emojiBlock, 1);
+        grid.Children.Add(_emojiBlock);
+
+        _colorDot = new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+        Grid.SetColumn(_colorDot, 2);
+        grid.Children.Add(_colorDot);
+
+        _titleBlock = new TextBlock
+        {
+            FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        Grid.SetColumn(_titleBlock, 3);
+        grid.Children.Add(_titleBlock);
+
+        _activeBadgeText = new TextBlock
+        {
+            Text = "ATIVO", FontSize = 9, FontWeight = FontWeights.Bold,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         _activeBadge = new Border
         {
             CornerRadius = new CornerRadius(8),
-            Background = new SolidColorBrush(Color.FromArgb(0x40, 0x0A, 0x84, 0xFF)),
-            Padding = new Thickness(5, 1, 5, 1),
-            Margin = new Thickness(6, 0, 0, 0),
-            Child = new TextBlock { Text = "ativo", FontSize = 9, FontWeight = FontWeights.Medium, Foreground = new SolidColorBrush(Color.FromRgb(0x0A,0x84,0xFF)) },
+            Padding = new Thickness(6, 1, 6, 1),
+            Margin = new Thickness(6, 0, 6, 0),
+            VerticalAlignment = VerticalAlignment.Center,
             Visibility = Visibility.Collapsed,
+            Child = _activeBadgeText,
         };
-        stack.Children.Add(_emojiBlock);
-        stack.Children.Add(_colorDot);
-        stack.Children.Add(_titleBlock);
-        stack.Children.Add(_activeBadge);
+        Grid.SetColumn(_activeBadge, 4);
+        grid.Children.Add(_activeBadge);
 
-        _headerBorder = new Border
+        _removeButton = new Button
         {
-            VerticalAlignment = VerticalAlignment.Top,
-            Padding = new Thickness(8, 4, 8, 4),
+            Content = "✕",
+            FontSize = 11,
+            Width = 22, Height = 22,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
             Cursor = Cursors.Hand,
-            Child = stack,
+            Padding = new Thickness(0),
+            ToolTip = "Remover do split (não fecha a aba)",
+            VerticalAlignment = VerticalAlignment.Center,
         };
-        _headerBorder.MouseLeftButtonUp += (_, _) => onHeaderClick();
-        Children.Add(_headerBorder);
+        _removeButton.Click += (_, _) =>
+        {
+            if (_tab is not null) AppState.Shared.RemoveFromSplit(_tab.Id);
+        };
+        Grid.SetColumn(_removeButton, 5);
+        grid.Children.Add(_removeButton);
+
+        Child = grid;
+
+        MouseLeftButtonDown += OnMouseDown;
+        MouseMove += OnMouseMove;
+        MouseLeftButtonUp += OnClick;
+        Drop += OnDrop;
+        DragEnter += OnDragEnter;
+        DragLeave += OnDragLeave;
     }
 
     public void Render(TerminalTab tab, bool isFocused)
     {
+        _tab = tab;
         _titleBlock.Text = tab.Title;
-        _titleBlock.FontWeight = isFocused ? FontWeights.SemiBold : FontWeights.Normal;
+        _titleBlock.FontWeight = isFocused ? FontWeights.SemiBold : FontWeights.Medium;
+
         if (!string.IsNullOrEmpty(tab.Emoji))
         {
             _emojiBlock.Text = tab.Emoji;
@@ -313,16 +465,80 @@ public sealed class WorkspaceChrome : Grid
         {
             _emojiBlock.Visibility = Visibility.Collapsed;
             _colorDot.Visibility = Visibility.Visible;
-            _colorDot.Fill = new SolidColorBrush(TabChip.ColorFromHex(tab.ColorHex));
+            _colorDot.Fill = new SolidColorBrush(Color.FromArgb(0xF2, 0xFF, 0xFF, 0xFF));
         }
-        var c = TabChip.ColorFromHex(tab.ColorHex);
-        byte alpha = isFocused ? (byte)0x37 : (byte)0x1A;
-        _headerBorder.Background = new SolidColorBrush(Color.FromArgb(alpha, c.R, c.G, c.B));
 
-        _borderShape.BorderBrush = isFocused
-            ? new SolidColorBrush(Color.FromArgb(0x99, 0x0A, 0x84, 0xFF))
-            : new SolidColorBrush(Color.FromArgb(0x33, 0x88, 0x88, 0x88));
-        _borderShape.BorderThickness = new Thickness(isFocused ? 1.5 : 0.5);
+        var c = TabChip.ColorFromHex(tab.ColorHex);
+        byte bgAlpha = isFocused ? (byte)0xFF : (byte)0xD9;
+        Background = new SolidColorBrush(Color.FromArgb(bgAlpha, c.R, c.G, c.B));
+
+        var fg = ContrastingForeground(c);
+        _titleBlock.Foreground = new SolidColorBrush(fg);
+        _emojiBlock.Foreground = new SolidColorBrush(fg);
+        _dragHandle.Foreground = new SolidColorBrush(Color.FromArgb(0xC0, fg.R, fg.G, fg.B));
+        _removeButton.Foreground = new SolidColorBrush(Color.FromArgb(0xCC, fg.R, fg.G, fg.B));
+
+        _activeBadge.Background = new SolidColorBrush(Color.FromArgb(0xF2, 0xFF, 0xFF, 0xFF));
+        _activeBadgeText.Foreground = new SolidColorBrush(c);
         _activeBadge.Visibility = isFocused ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static Color ContrastingForeground(Color bg)
+    {
+        // Luminance heuristic — text is white over dark bg, black over light bg.
+        var lum = (0.299 * bg.R + 0.587 * bg.G + 0.114 * bg.B) / 255.0;
+        return lum > 0.6 ? Color.FromRgb(0x10, 0x10, 0x18) : Colors.White;
+    }
+
+    // -------- Drag source --------
+    private void OnMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _dragStart = e.GetPosition(null);
+    }
+
+    private void OnMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (_tab is null) return;
+        if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed) return;
+        var p = e.GetPosition(null);
+        var diff = _dragStart - p;
+        if (Math.Abs(diff.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(diff.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        var data = new DataObject();
+        data.SetData("DanteSplitTabId", _tab.Id.ToString());
+        try { DragDrop.DoDragDrop(this, data, DragDropEffects.Move); } catch { }
+    }
+
+    private void OnClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (_tab is not null) AppState.Shared.ActiveTab = _tab;
+    }
+
+    // -------- Drop target --------
+    private void OnDragEnter(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent("DanteSplitTabId"))
+        {
+            e.Effects = DragDropEffects.Move;
+            // Subtle highlight
+            Opacity = 0.85;
+        }
+        else e.Effects = DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void OnDragLeave(object sender, DragEventArgs e)
+    {
+        Opacity = 1.0;
+    }
+
+    private void OnDrop(object sender, DragEventArgs e)
+    {
+        Opacity = 1.0;
+        if (_tab is null) return;
+        if (e.Data.GetData("DanteSplitTabId") is string s && Guid.TryParse(s, out var src))
+        {
+            if (src != _tab.Id) AppState.Shared.SwapSplitSlots(src, _tab.Id);
+        }
     }
 }

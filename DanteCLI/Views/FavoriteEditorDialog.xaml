@@ -32,7 +32,14 @@
 
         <DockPanel Grid.Row="3" Margin="0,0,0,8">
             <TextBlock Text="Emoji" Width="80" VerticalAlignment="Center" />
-            <TextBox x:Name="EmojiBox" Padding="6,4" Width="60" HorizontalAlignment="Left" />
+            <Button x:Name="EmojiPickerButton" Click="EmojiPickerButton_Click"
+                    HorizontalAlignment="Left" Padding="10,4" MinWidth="80"
+                    Background="#11000000" BorderThickness="0" Cursor="Hand">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock x:Name="EmojiPreview" Text="😀" FontSize="20" Margin="0,0,6,0" />
+                    <TextBlock Text="Escolher" VerticalAlignment="Center" FontSize="11" />
+                </StackPanel>
+            </Button>
         </DockPanel>
 
         <DockPanel Grid.Row="4" Margin="0,0,0,8">

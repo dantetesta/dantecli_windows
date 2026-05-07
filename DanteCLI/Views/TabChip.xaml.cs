@@ -17,7 +17,15 @@ public partial class TabChip : UserControl
     private bool _isActive;
     private bool _hovering;
 
-    public TabChip() { InitializeComponent(); }
+    public TabChip()
+    {
+        InitializeComponent();
+        ViewModels.AppState.Shared.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ViewModels.AppState.SplitWorkspace))
+                Dispatcher.BeginInvoke(new Action(UpdateMenuVisibility));
+        };
+    }
 
     public void Bind(TerminalTab tab, bool isActive)
     {
@@ -26,6 +34,15 @@ public partial class TabChip : UserControl
         _isActive = isActive;
         tab.PropertyChanged += OnTabChanged;
         Render();
+        UpdateMenuVisibility();
+    }
+
+    private void UpdateMenuVisibility()
+    {
+        if (_tab is null) return;
+        var state = ViewModels.AppState.Shared;
+        var canAdd = state.SplitWorkspaceHasVacantSlot && !state.TabIsInSplit(_tab.Id);
+        AddToSplitMenuItem.Visibility = canAdd ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnTabChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -100,10 +117,18 @@ public partial class TabChip : UserControl
             _tab.ColorHex = hex;
     }
 
-    private void EmojiMenu_Click(object sender, RoutedEventArgs e)
+    private void EmojiPickerMenu_Click(object sender, RoutedEventArgs e)
     {
-        if (_tab is not null && sender is MenuItem mi && mi.Tag is string emoji)
-            _tab.Emoji = string.IsNullOrEmpty(emoji) ? null : emoji;
+        if (_tab is null) return;
+        var dlg = new EmojiPickerWindow { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() == true)
+            _tab.Emoji = dlg.Selected;  // null when cleared
+    }
+
+    private void AddToSplitMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (_tab is null) return;
+        AppState.Shared.AddTabToSplit(_tab.Id);
     }
 
     private void FavoriteMenu_Click(object sender, RoutedEventArgs e)

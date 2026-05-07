@@ -28,4 +28,6 @@ public sealed class AppSettings
     public string CustomForegroundHex { get; set; } = "";
     public string CustomCursorHex { get; set; } = "";
     public bool UseCustomColors { get; set; } = false;
+
+    public List<string> RecentEmojis { get; set; } = new();
 }
