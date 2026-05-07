@@ -8,7 +8,9 @@ public partial class App : Application
 {
     public static MainWindow? Window { get; private set; }
     private static readonly string LogPath =
-        Path.Combine(Path.GetTempPath(), "dantecli_startup.log");
+        Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            "dantecli_startup.log");
 
     public App()
     {

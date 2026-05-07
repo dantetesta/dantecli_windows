@@ -46,6 +46,8 @@ Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescrip
 [Files]
 Source: "..\publish\x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: VCRedistNeedsInstall
+Source: "redist\windowsappruntime.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+Source: "redist\windowsdesktop-runtime.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: DotNet8NeedsInstall
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -55,8 +57,13 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; \
-  StatusMsg: "Instalando Microsoft Visual C++ Runtime..."; \
+  StatusMsg: "Instalando Microsoft Visual C++ Runtime (1/3)..."; \
   Check: VCRedistNeedsInstall
+Filename: "{tmp}\windowsdesktop-runtime.exe"; Parameters: "/install /quiet /norestart"; \
+  StatusMsg: "Instalando .NET 8 Desktop Runtime (2/3)..."; \
+  Check: DotNet8NeedsInstall
+Filename: "{tmp}\windowsappruntime.exe"; Parameters: "--quiet"; \
+  StatusMsg: "Instalando Windows App Runtime 1.7 (3/3)..."
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
@@ -64,11 +71,29 @@ function VCRedistNeedsInstall: Boolean;
 var
   Installed: Cardinal;
 begin
-  // Check for VC++ 2015-2022 Redistributable x64
   if RegQueryDWordValue(HKLM, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64', 'Installed', Installed) then
     Result := (Installed <> 1)
   else
     Result := True;
+end;
+
+function DotNet8NeedsInstall: Boolean;
+var
+  Output: AnsiString;
+  ResultCode: Integer;
+  Found: Boolean;
+begin
+  Found := False;
+  // Look for any installed Microsoft.WindowsDesktop.App 8.x via the "dotnet --list-runtimes" CLI.
+  if Exec(ExpandConstant('{cmd}'), '/C dotnet --list-runtimes > "{tmp}\dotnet_runtimes.txt" 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    if LoadStringFromFile(ExpandConstant('{tmp}\dotnet_runtimes.txt'), Output) then
+    begin
+      if Pos('Microsoft.WindowsDesktop.App 8.', String(Output)) > 0 then
+        Found := True;
+    end;
+  end;
+  Result := not Found;
 end;
 
 [UninstallDelete]
