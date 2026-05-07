@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using DanteCLI.Models;
+using DanteCLI.ViewModels;
 
 namespace DanteCLI.Views;
 
@@ -20,13 +21,28 @@ public partial class TabChip : UserControl
 
     public void Bind(TerminalTab tab, bool isActive)
     {
+        if (_tab is not null) _tab.PropertyChanged -= OnTabChanged;
         _tab = tab;
         _isActive = isActive;
-        TitleBlock.Text = tab.Title;
-        TitleBlock.FontWeight = isActive ? FontWeights.SemiBold : FontWeights.Normal;
-        if (!string.IsNullOrWhiteSpace(tab.Emoji))
+        tab.PropertyChanged += OnTabChanged;
+        Render();
+    }
+
+    private void OnTabChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        Dispatcher.BeginInvoke(new Action(Render));
+    }
+
+    private void Render()
+    {
+        if (_tab is null) return;
+        TitleBlock.Text = _tab.Title;
+        TitleBlock.FontWeight = _isActive ? FontWeights.SemiBold : FontWeights.Normal;
+        DirtyDot.Visibility = _tab.IsDirty ? Visibility.Visible : Visibility.Collapsed;
+
+        if (!string.IsNullOrWhiteSpace(_tab.Emoji))
         {
-            EmojiBlock.Text = tab.Emoji;
+            EmojiBlock.Text = _tab.Emoji;
             EmojiBlock.Visibility = Visibility.Visible;
             ColorDot.Visibility = Visibility.Collapsed;
         }
@@ -34,15 +50,10 @@ public partial class TabChip : UserControl
         {
             EmojiBlock.Visibility = Visibility.Collapsed;
             ColorDot.Visibility = Visibility.Visible;
-            ColorDot.Fill = new SolidColorBrush(ColorFromHex(tab.ColorHex));
+            ColorDot.Fill = new SolidColorBrush(ColorFromHex(_tab.ColorHex));
         }
-        CloseButton.Visibility = isActive || _hovering ? Visibility.Visible : Visibility.Hidden;
-        UpdateBackground();
-    }
+        CloseButton.Visibility = _isActive || _hovering ? Visibility.Visible : Visibility.Hidden;
 
-    private void UpdateBackground()
-    {
-        if (_tab is null) return;
         var c = ColorFromHex(_tab.ColorHex);
         byte alpha = _isActive ? (byte)0x47 : (_hovering ? (byte)0x29 : (byte)0x1A);
         Root.Background = new SolidColorBrush(Color.FromArgb(alpha, c.R, c.G, c.B));
@@ -50,25 +61,100 @@ public partial class TabChip : UserControl
 
     private void Root_MouseEnter(object sender, MouseEventArgs e)
     {
-        _hovering = true;
-        if (_tab is not null) Bind(_tab, _isActive);
+        _hovering = true; Render();
     }
 
     private void Root_MouseLeave(object sender, MouseEventArgs e)
     {
-        _hovering = false;
-        if (_tab is not null) Bind(_tab, _isActive);
+        _hovering = false; Render();
     }
 
     private void Root_Click(object sender, MouseButtonEventArgs e)
     {
+        if (TitleEdit.Visibility == Visibility.Visible) return;
         if (_tab is not null) Selected?.Invoke(this, _tab);
+    }
+
+    private void Root_DoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        StartRename();
+        e.Handled = true;
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
         if (_tab is not null) Closed?.Invoke(this, _tab);
         e.Handled = true;
+    }
+
+    // -------- Context menu handlers --------
+
+    private void RenameMenu_Click(object sender, RoutedEventArgs e) => StartRename();
+
+    private void ColorMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (_tab is not null && sender is MenuItem mi && mi.Tag is string hex)
+            _tab.ColorHex = hex;
+    }
+
+    private void EmojiMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (_tab is not null && sender is MenuItem mi && mi.Tag is string emoji)
+            _tab.Emoji = string.IsNullOrEmpty(emoji) ? null : emoji;
+    }
+
+    private void FavoriteMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (_tab is null) return;
+        var fav = AppState.Shared.FavoriteFromTab(_tab);
+        var dlg = new FavoriteEditorDialog(fav, isNew: true) { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() == true)
+            AppState.Shared.Favorites.Add(dlg.Result);
+    }
+
+    private void DuplicateMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (_tab is not null) AppState.Shared.DuplicateTab(_tab);
+    }
+
+    private void CloseMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (_tab is not null) Closed?.Invoke(this, _tab);
+    }
+
+    // -------- Inline rename --------
+
+    private void StartRename()
+    {
+        if (_tab is null) return;
+        TitleBlock.Visibility = Visibility.Collapsed;
+        TitleEdit.Visibility = Visibility.Visible;
+        TitleEdit.Text = _tab.Title;
+        TitleEdit.Focus();
+        TitleEdit.SelectAll();
+    }
+
+    private void TitleEdit_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) { CommitRename(); e.Handled = true; }
+        else if (e.Key == Key.Escape) { CancelRename(); e.Handled = true; }
+    }
+
+    private void TitleEdit_LostFocus(object sender, RoutedEventArgs e) => CommitRename();
+
+    private void CommitRename()
+    {
+        if (_tab is null) return;
+        var trimmed = (TitleEdit.Text ?? "").Trim();
+        if (!string.IsNullOrEmpty(trimmed)) _tab.Title = trimmed;
+        TitleEdit.Visibility = Visibility.Collapsed;
+        TitleBlock.Visibility = Visibility.Visible;
+    }
+
+    private void CancelRename()
+    {
+        TitleEdit.Visibility = Visibility.Collapsed;
+        TitleBlock.Visibility = Visibility.Visible;
     }
 
     public static Color ColorFromHex(string hex)

@@ -35,6 +35,13 @@ public partial class TerminalView : UserControl
         InitializeComponent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        ViewModels.AppState.Shared.InjectIntoActiveTerminal += OnInject;
+    }
+
+    private void OnInject(object? sender, string text)
+    {
+        if (ViewModels.AppState.Shared.ActiveTab == _tab && _session is not null)
+            Dispatcher.BeginInvoke(new Action(() => _session?.WriteInput(text)));
     }
 
     public void Bind(TerminalTab tab) => _tab = tab;
@@ -55,6 +62,7 @@ public partial class TerminalView : UserControl
     private async void OnUnloaded(object? sender, RoutedEventArgs e)
     {
         _flushTimer?.Stop();
+        ViewModels.AppState.Shared.InjectIntoActiveTerminal -= OnInject;
         await StopAsync();
     }
 

@@ -10,7 +10,7 @@ public sealed class TerminalTab : INotifyPropertyChanged
 {
     public Guid Id { get; } = Guid.NewGuid();
 
-    private string _title = "zsh";
+    private string _title = "shell";
     public string Title { get => _title; set => Set(ref _title, value); }
 
     private string _colorHex = TabColors.Neutral;
@@ -22,18 +22,17 @@ public sealed class TerminalTab : INotifyPropertyChanged
     private TabKind _kind = TabKind.Terminal;
     public TabKind Kind { get => _kind; set => Set(ref _kind, value); }
 
-    /// Working directory the spawn happened in (terminal kind only).
     public string? WorkingDirectory { get; set; }
-
-    /// Command to feed into the shell after spawn.
     public string? InitialCommand { get; set; }
 
     /// File path open in the editor (editor kind only).
     public string? FileUrl { get; set; }
 
-    /// Dirty flag for editor.
     private bool _isDirty;
     public bool IsDirty { get => _isDirty; set => Set(ref _isDirty, value); }
+
+    public bool IsEditor => Kind == TabKind.Editor;
+    public bool IsTerminal => Kind == TabKind.Terminal;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

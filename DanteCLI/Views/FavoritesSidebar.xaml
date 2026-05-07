@@ -44,6 +44,16 @@
         <ListBox x:Name="List" Grid.Row="1" BorderThickness="0" Background="Transparent"
                  SelectionMode="Single" Margin="6,0,6,6"
                  MouseDoubleClick="List_MouseDoubleClick">
+            <ListBox.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Abrir em nova aba" Click="OpenInTab_Click" />
+                    <MenuItem Header="Editar" Click="Edit_Click" />
+                    <Separator />
+                    <MenuItem Header="Revelar no Explorer" Click="RevealInExplorer_Click" />
+                    <Separator />
+                    <MenuItem Header="Deletar" Click="Delete_Click" />
+                </ContextMenu>
+            </ListBox.ContextMenu>
             <ListBox.ItemTemplate>
                 <DataTemplate>
                     <StackPanel Margin="0,3">

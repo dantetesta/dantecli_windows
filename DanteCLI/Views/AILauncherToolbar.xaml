@@ -1,0 +1,5 @@
+<UserControl x:Class="DanteCLI.Views.AILauncherToolbar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel x:Name="Root" Orientation="Horizontal" />
+</UserControl>

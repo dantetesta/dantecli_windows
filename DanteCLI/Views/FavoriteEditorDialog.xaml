@@ -1,0 +1,83 @@
+<Window x:Class="DanteCLI.Views.FavoriteEditorDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Favorito" Height="440" Width="500"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="HeaderText" Grid.Row="0" Text="Novo Favorito"
+                   FontSize="16" FontWeight="SemiBold" Margin="0,0,0,12" />
+
+        <DockPanel Grid.Row="1" Margin="0,0,0,8">
+            <TextBlock Text="Nome" Width="80" VerticalAlignment="Center" />
+            <TextBox x:Name="NameBox" Padding="6,4" />
+        </DockPanel>
+
+        <DockPanel Grid.Row="2" Margin="0,0,0,8">
+            <TextBlock Text="Caminho" Width="80" VerticalAlignment="Center" />
+            <Button DockPanel.Dock="Right" x:Name="PickFolderButton"
+                    Content="Escolher…" Click="PickFolderButton_Click" Padding="10,4" Margin="6,0,0,0" />
+            <TextBox x:Name="PathBox" Padding="6,4" FontFamily="Consolas" />
+        </DockPanel>
+
+        <DockPanel Grid.Row="3" Margin="0,0,0,8">
+            <TextBlock Text="Emoji" Width="80" VerticalAlignment="Center" />
+            <TextBox x:Name="EmojiBox" Padding="6,4" Width="60" HorizontalAlignment="Left" />
+        </DockPanel>
+
+        <DockPanel Grid.Row="4" Margin="0,0,0,8">
+            <TextBlock Text="Cor" Width="80" VerticalAlignment="Center" />
+            <ItemsControl x:Name="ColorPalette">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+            </ItemsControl>
+        </DockPanel>
+
+        <DockPanel Grid.Row="5" Margin="0,0,0,8">
+            <TextBlock Text="Comando inicial" Width="80" VerticalAlignment="Center" />
+            <TextBox x:Name="CommandBox" Padding="6,4" FontFamily="Consolas"
+                     ToolTip="Opcional, ex: npm run dev" />
+        </DockPanel>
+
+        <DockPanel Grid.Row="6" Margin="0,8,0,0">
+            <TextBlock Text="Tags" Width="80" VerticalAlignment="Top" Margin="0,4,0,0" />
+            <StackPanel>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" x:Name="AddTagButton" Content="+" Padding="10,4"
+                            Margin="6,0,0,0" Click="AddTagButton_Click" />
+                    <TextBox x:Name="TagInputBox" Padding="6,4" KeyDown="TagInputBox_KeyDown" />
+                </DockPanel>
+                <ItemsControl x:Name="TagsList" Margin="0,6,0,0">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                </ItemsControl>
+            </StackPanel>
+        </DockPanel>
+
+        <DockPanel Grid.Row="7" Margin="0,16,0,0" LastChildFill="False">
+            <Button x:Name="DeleteButton" DockPanel.Dock="Left" Content="Deletar"
+                    Click="DeleteButton_Click" Padding="14,6" Foreground="#FF453A"
+                    Background="Transparent" BorderThickness="0" Visibility="Collapsed" />
+            <Button x:Name="SaveButton" DockPanel.Dock="Right" Content="Salvar"
+                    Click="SaveButton_Click" Padding="14,6" Margin="6,0,0,0" IsDefault="True" />
+            <Button x:Name="CancelButton" DockPanel.Dock="Right" Content="Cancelar"
+                    Click="CancelButton_Click" Padding="14,6" IsCancel="True" />
+        </DockPanel>
+    </Grid>
+</Window>

@@ -4,16 +4,62 @@
              Cursor="Hand">
     <Border x:Name="Root" CornerRadius="6" Padding="10,5" Margin="3,0"
             MouseEnter="Root_MouseEnter" MouseLeave="Root_MouseLeave"
-            MouseLeftButtonUp="Root_Click">
+            MouseLeftButtonUp="Root_Click" MouseDoubleClick="Root_DoubleClick">
         <StackPanel Orientation="Horizontal">
             <TextBlock x:Name="EmojiBlock" FontSize="13" Margin="0,0,6,0" Visibility="Collapsed" />
             <Ellipse x:Name="ColorDot" Width="9" Height="9" Margin="0,0,6,0" />
+            <TextBlock x:Name="DirtyDot" FontSize="11" Margin="0,0,4,0"
+                       Foreground="#0A84FF" Text="●" Visibility="Collapsed" />
             <TextBlock x:Name="TitleBlock" VerticalAlignment="Center" FontSize="12" />
+            <TextBox x:Name="TitleEdit" VerticalAlignment="Center" FontSize="12"
+                     Background="Transparent" BorderThickness="0" Padding="0"
+                     Visibility="Collapsed" MinWidth="60"
+                     KeyDown="TitleEdit_KeyDown" LostFocus="TitleEdit_LostFocus" />
             <Button x:Name="CloseButton" Click="CloseButton_Click"
                     Background="Transparent" BorderThickness="0" Margin="6,0,0,0"
                     Padding="2" Width="16" Height="16" Visibility="Hidden">
                 <TextBlock Text="✕" FontSize="9" />
             </Button>
         </StackPanel>
+        <Border.ContextMenu>
+            <ContextMenu>
+                <MenuItem x:Name="RenameMenu" Header="Renomear" Click="RenameMenu_Click" />
+                <MenuItem Header="Cor">
+                    <MenuItem Header="Neutral"  Click="ColorMenu_Click" Tag="#8E8E93" />
+                    <MenuItem Header="Red"      Click="ColorMenu_Click" Tag="#FF453A" />
+                    <MenuItem Header="Orange"   Click="ColorMenu_Click" Tag="#FF9F0A" />
+                    <MenuItem Header="Yellow"   Click="ColorMenu_Click" Tag="#FFD60A" />
+                    <MenuItem Header="Green"    Click="ColorMenu_Click" Tag="#30D158" />
+                    <MenuItem Header="Mint"     Click="ColorMenu_Click" Tag="#63E6BE" />
+                    <MenuItem Header="Cyan"     Click="ColorMenu_Click" Tag="#64D2FF" />
+                    <MenuItem Header="Blue"     Click="ColorMenu_Click" Tag="#0A84FF" />
+                    <MenuItem Header="Indigo"   Click="ColorMenu_Click" Tag="#5E5CE6" />
+                    <MenuItem Header="Purple"   Click="ColorMenu_Click" Tag="#BF5AF2" />
+                    <MenuItem Header="Pink"     Click="ColorMenu_Click" Tag="#FF375F" />
+                    <MenuItem Header="Brown"    Click="ColorMenu_Click" Tag="#AC8E68" />
+                </MenuItem>
+                <MenuItem Header="Emoji">
+                    <MenuItem Header="💻" Click="EmojiMenu_Click" Tag="💻" />
+                    <MenuItem Header="🤖" Click="EmojiMenu_Click" Tag="🤖" />
+                    <MenuItem Header="🚀" Click="EmojiMenu_Click" Tag="🚀" />
+                    <MenuItem Header="🐳" Click="EmojiMenu_Click" Tag="🐳" />
+                    <MenuItem Header="🛠️" Click="EmojiMenu_Click" Tag="🛠️" />
+                    <MenuItem Header="📦" Click="EmojiMenu_Click" Tag="📦" />
+                    <MenuItem Header="🔥" Click="EmojiMenu_Click" Tag="🔥" />
+                    <MenuItem Header="🧪" Click="EmojiMenu_Click" Tag="🧪" />
+                    <MenuItem Header="⚡️" Click="EmojiMenu_Click" Tag="⚡️" />
+                    <MenuItem Header="🌐" Click="EmojiMenu_Click" Tag="🌐" />
+                    <MenuItem Header="🎨" Click="EmojiMenu_Click" Tag="🎨" />
+                    <MenuItem Header="🎯" Click="EmojiMenu_Click" Tag="🎯" />
+                    <Separator />
+                    <MenuItem Header="Limpar emoji" Click="EmojiMenu_Click" Tag="" />
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="⭐ Adicionar aos Favoritos" Click="FavoriteMenu_Click" />
+                <MenuItem Header="Duplicar" Click="DuplicateMenu_Click" />
+                <Separator />
+                <MenuItem Header="Fechar aba" Click="CloseMenu_Click" />
+            </ContextMenu>
+        </Border.ContextMenu>
     </Border>
 </UserControl>

@@ -5,6 +5,17 @@
         Title="DANTE CLI" Height="700" Width="1100"
         WindowStartupLocation="CenterScreen"
         Background="#FAFAFA">
+    <Window.InputBindings>
+        <KeyBinding Key="T" Modifiers="Control" Command="{x:Static ApplicationCommands.New}" />
+        <KeyBinding Key="W" Modifiers="Control" Command="{x:Static ApplicationCommands.Close}" />
+        <KeyBinding Key="O" Modifiers="Control" Command="{x:Static ApplicationCommands.Open}" />
+    </Window.InputBindings>
+    <Window.CommandBindings>
+        <CommandBinding Command="{x:Static ApplicationCommands.New}" Executed="NewTab_Cmd" />
+        <CommandBinding Command="{x:Static ApplicationCommands.Close}" Executed="CloseTab_Cmd" />
+        <CommandBinding Command="{x:Static ApplicationCommands.Open}" Executed="OpenFile_Cmd" />
+    </Window.CommandBindings>
+
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="280" MinWidth="200" />
@@ -20,7 +31,6 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <!-- Picker Favoritos / Files -->
                 <Border Grid.Row="0" Padding="10,10,10,4">
                     <UniformGrid Columns="2" Margin="0">
                         <RadioButton x:Name="PickerFavorites" Content="⭐"
@@ -43,11 +53,20 @@
         <Grid Grid.Column="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!-- Tab strip -->
+            <!-- AI toolbar -->
             <Border Grid.Row="0" BorderBrush="{StaticResource DividerBrush}"
+                    BorderThickness="0,0,0,1" Padding="6,6">
+                <DockPanel>
+                    <views:AILauncherToolbar x:Name="AIToolbar" DockPanel.Dock="Right" />
+                </DockPanel>
+            </Border>
+
+            <!-- Tab strip -->
+            <Border Grid.Row="1" BorderBrush="{StaticResource DividerBrush}"
                     BorderThickness="0,0,0,1" Padding="6,6">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -71,35 +90,9 @@
                 </Grid>
             </Border>
 
-            <!-- Active tab body -->
-            <Grid x:Name="TabsHost" Grid.Row="1" Background="#1A1B26" />
+            <!-- Tab body host: Canvas keeps tab views identity-stable across split mode changes -->
+            <Canvas x:Name="TabsCanvas" Grid.Row="2" Background="#1A1B26"
+                    SizeChanged="TabsCanvas_SizeChanged" ClipToBounds="True" />
         </Grid>
     </Grid>
-
-    <Window.Resources>
-        <Style x:Key="SegBtnStyle" TargetType="RadioButton">
-            <Setter Property="HorizontalContentAlignment" Value="Center" />
-            <Setter Property="Padding" Value="8,5" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Bd" Background="Transparent" CornerRadius="6">
-                            <ContentPresenter HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"
-                                              Margin="{TemplateBinding Padding}" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#22000000" />
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#11000000" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </Window.Resources>
 </Window>
