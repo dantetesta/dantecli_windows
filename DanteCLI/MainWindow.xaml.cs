@@ -345,6 +345,12 @@ public partial class MainWindow : Window
         var dlg = new Views.SettingsWindow { Owner = this };
         dlg.ShowDialog();
     }
+
+    private void AboutButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Views.AboutWindow { Owner = this };
+        dlg.ShowDialog();
+    }
     private void NewTab_Cmd(object sender, ExecutedRoutedEventArgs e) => AppState.Shared.NewTab();
     private void CloseTab_Cmd(object sender, ExecutedRoutedEventArgs e)
     {

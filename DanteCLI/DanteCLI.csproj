@@ -11,7 +11,7 @@
     <AssemblyName>DanteCLI</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <Authors>Dante Testa</Authors>
     <Product>DANTE CLI</Product>
     <Description>Native Windows terminal with custom tabs, favorites, and AI quick-launch.</Description>

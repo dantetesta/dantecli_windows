@@ -1,0 +1,71 @@
+<Window x:Class="DanteCLI.Views.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Sobre o DANTE CLI" Height="420" Width="380"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize">
+    <Grid Margin="22">
+        <StackPanel HorizontalAlignment="Center">
+            <Image Source="pack://application:,,,/Assets/icone-app.png"
+                   Width="96" Height="96" Margin="0,4,0,8" />
+            <TextBlock Text="DANTE CLI" FontSize="22" FontWeight="Bold"
+                       HorizontalAlignment="Center" />
+            <TextBlock x:Name="VersionText" FontSize="12" Foreground="#888"
+                       HorizontalAlignment="Center" Margin="0,2,0,12" />
+
+            <Border BorderBrush="#22000000" BorderThickness="0,1,0,0" Margin="20,0" />
+
+            <StackPanel Margin="0,12,0,12">
+                <Button x:Name="SiteBtn" Click="SiteBtn_Click" Style="{StaticResource LinkRow}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="🌐" Margin="0,0,8,0" />
+                        <TextBlock Text="dantetesta.com.br" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="EmailBtn" Click="EmailBtn_Click" Style="{StaticResource LinkRow}" Margin="0,4,0,0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="✉" Margin="0,0,8,0" />
+                        <TextBlock Text="suporte@dantetesta.com.br" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="ZapBtn" Click="ZapBtn_Click" Style="{StaticResource LinkRow}" Margin="0,4,0,0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="💬" Margin="0,0,8,0" />
+                        <TextBlock Text="WhatsApp +55 19 99802-1956" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
+            <Border BorderBrush="#22000000" BorderThickness="0,1,0,0" Margin="20,0" />
+
+            <TextBlock x:Name="CopyrightText" Foreground="#888" FontSize="11"
+                       HorizontalAlignment="Center" Margin="0,12,0,0" />
+        </StackPanel>
+    </Grid>
+
+    <Window.Resources>
+        <Style x:Key="LinkRow" TargetType="Button">
+            <Setter Property="Background" Value="#11000000" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="MinWidth" Value="270" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Left"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#22000000" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+</Window>
