@@ -91,8 +91,9 @@ public partial class MainWindow : Window
     {
         if (sender is RadioButton rb && rb.Tag is string tag)
         {
-            FavoritesPane.Visibility = tag == "files" ? Visibility.Collapsed : Visibility.Visible;
-            FilesPane.Visibility     = tag == "files" ? Visibility.Visible    : Visibility.Collapsed;
+            FavoritesPane.Visibility = tag == "favorites" ? Visibility.Visible : Visibility.Collapsed;
+            FilesPane.Visibility     = tag == "files"     ? Visibility.Visible : Visibility.Collapsed;
+            SnippetsPlaceholder.Visibility = tag == "snippets" ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 

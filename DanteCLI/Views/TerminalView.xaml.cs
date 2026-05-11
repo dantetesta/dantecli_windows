@@ -56,7 +56,26 @@ public partial class TerminalView : UserControl
         _flushTimer.Start();
 
         await EnsureStartedAsync();
+        // Need the dispatcher loop to run once before focus can land reliably.
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            OutputView.Focus();
+            Keyboard.Focus(OutputView);
+            OutputView.CaretIndex = OutputView.Text.Length;
+        }), DispatcherPriority.Input);
+    }
+
+    private void UserControl_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // Any click inside the terminal area refocuses the OutputView so typing works.
         OutputView.Focus();
+        Keyboard.Focus(OutputView);
+    }
+
+    private void Output_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        // Caret always at the end so PageUp / arrow nav doesn't desync from input.
+        OutputView.CaretIndex = OutputView.Text.Length;
     }
 
     private async void OnUnloaded(object? sender, RoutedEventArgs e)

@@ -32,19 +32,41 @@
                 </Grid.RowDefinitions>
 
                 <Border Grid.Row="0" Padding="10,10,10,4">
-                    <UniformGrid Columns="2" Margin="0">
-                        <RadioButton x:Name="PickerFavorites" Content="⭐"
+                    <UniformGrid Columns="3" Margin="0">
+                        <RadioButton x:Name="PickerFavorites"
                                      IsChecked="True" Click="Picker_Click" Tag="favorites"
-                                     Style="{DynamicResource SegBtnStyle}" />
-                        <RadioButton x:Name="PickerFiles" Content="📁"
+                                     Style="{DynamicResource SegBtnStyle}">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="⭐" FontSize="14" HorizontalAlignment="Center" />
+                                <TextBlock Text="Favoritos" FontSize="10" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="PickerFiles"
                                      Click="Picker_Click" Tag="files"
-                                     Style="{DynamicResource SegBtnStyle}" />
+                                     Style="{DynamicResource SegBtnStyle}">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="📁" FontSize="14" HorizontalAlignment="Center" />
+                                <TextBlock Text="Pastas" FontSize="10" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="PickerSnippets"
+                                     Click="Picker_Click" Tag="snippets"
+                                     Style="{DynamicResource SegBtnStyle}">
+                            <StackPanel HorizontalAlignment="Center">
+                                <TextBlock Text="▶" FontSize="14" HorizontalAlignment="Center" />
+                                <TextBlock Text="Snippets" FontSize="10" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </RadioButton>
                     </UniformGrid>
                 </Border>
 
                 <Grid Grid.Row="1">
                     <views:FavoritesSidebar x:Name="FavoritesPane" />
                     <views:FilesSidebar x:Name="FilesPane" Visibility="Collapsed" />
+                    <TextBlock x:Name="SnippetsPlaceholder" Visibility="Collapsed"
+                               Text="Snippets vão chegar na próxima versão Windows."
+                               TextWrapping="Wrap" Foreground="#888" Padding="14"
+                               HorizontalAlignment="Center" VerticalAlignment="Top" />
                 </Grid>
             </Grid>
         </Border>
