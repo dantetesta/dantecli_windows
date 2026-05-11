@@ -30,6 +30,7 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
     <PackageReference Include="AvalonEdit" Version="6.3.0.90" />
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
   </ItemGroup>
 
   <ItemGroup>
@@ -40,5 +41,10 @@
     <None Update="Assets\icone-app.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <EmbeddedResource Include="WebTerminal\terminal.html" />
+    <EmbeddedResource Include="WebTerminal\xterm.js" />
+    <EmbeddedResource Include="WebTerminal\xterm.css" />
+    <EmbeddedResource Include="WebTerminal\xterm-addon-fit.js" />
+    <EmbeddedResource Include="WebTerminal\xterm-addon-web-links.js" />
   </ItemGroup>
 </Project>

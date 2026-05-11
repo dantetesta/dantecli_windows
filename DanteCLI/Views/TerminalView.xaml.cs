@@ -1,44 +1,48 @@
 using System;
+using System.Collections.Concurrent;
+using System.IO;
 using System.Text;
-using System.Text.RegularExpressions;
+using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
 using System.Windows.Threading;
 using DanteCLI.Models;
 using DanteCLI.Services;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.Wpf;
 
 namespace DanteCLI.Views;
 
 /// <summary>
-/// Terminal output view backed by a single <see cref="TextBox"/>. Output is buffered
-/// in a <see cref="StringBuilder"/> and flushed to the UI on a 33ms timer to keep
-/// the dispatcher responsive even with chatty shells. Control characters (CR/LF/BS)
-/// and ANSI escape sequences are normalized; this is **not** a full VT emulator —
-/// it's the smallest renderer that produces legible output for cmd.exe and most
-/// non-interactive shell commands.
+/// Terminal view backed by a real Win32 ConPTY (so the child shell echoes
+/// natively and TUI apps work) and rendered inside WebView2 hosting xterm.js
+/// (a full VT/ANSI terminal emulator).
 ///
-/// Local-echo line discipline: because we use redirected pipes (no ConPTY), cmd.exe
-/// does NOT echo typed characters back. So we maintain a per-line input buffer,
-/// paint typed chars locally, and only flush the completed line to the child on Enter.
-/// Backspace/Home/End edit the local buffer; arrow keys are ignored in this mode
-/// (cmd doesn't honor them on piped stdin anyway).
+/// Lifecycle:
+///   1. ctor — start WebView2 init in the background.
+///   2. CoreWebView2 ready — map virtual host, navigate to terminal.html.
+///   3. JS posts {type:"ready", cols, rows} — start ConPTY with those dimensions.
+///   4. ConPTY output → batched, base64'd, fed to xterm via ExecuteScriptAsync.
+///   5. JS posts {type:"input", data} → forwarded raw to ConPTY stdin.
+///   6. JS posts {type:"resize", cols, rows} → ResizePseudoConsole.
 /// </summary>
 public partial class TerminalView : UserControl
 {
-    private const int MaxBufferLength = 200_000;
+    private const string VirtualHost = "danteterm.local";
 
-    private PtySession? _session;
     private TerminalTab? _tab;
-    private readonly StringBuilder _buffer = new();
-    private readonly object _pendingLock = new();
-    private string _pending = string.Empty;
-    private DispatcherTimer? _flushTimer;
+    private ConPtySession? _session;
+    private bool _terminalReady;
+    private int _cols = 120;
+    private int _rows = 30;
 
-    // Local-echo line discipline (see class summary)
-    private readonly StringBuilder _inputLine = new();
-    private int _inputAnchor; // index in _buffer where current input line begins
+    // Output batching: ConPTY emits many tiny chunks; batching cuts round-trips
+    // from C# to JS dramatically without adding perceptible latency.
+    private readonly ConcurrentQueue<byte[]> _outQueue = new();
+    private DispatcherTimer? _flushTimer;
+    private volatile bool _flushScheduled;
 
     public TerminalView()
     {
@@ -48,322 +52,259 @@ public partial class TerminalView : UserControl
         ViewModels.AppState.Shared.InjectIntoActiveTerminal += OnInject;
     }
 
-    private void OnInject(object? sender, string text)
-    {
-        if (ViewModels.AppState.Shared.ActiveTab == _tab && _session is not null)
-            Dispatcher.BeginInvoke(new Action(() => _session?.WriteInput(text)));
-    }
-
     public void Bind(TerminalTab tab) => _tab = tab;
 
     private async void OnLoaded(object? sender, RoutedEventArgs e)
     {
-        _flushTimer = new DispatcherTimer(DispatcherPriority.Background)
+        try
         {
-            Interval = TimeSpan.FromMilliseconds(33)
-        };
-        _flushTimer.Tick += (_, _) => FlushPending();
-        _flushTimer.Start();
-
-        await EnsureStartedAsync();
-        // Need the dispatcher loop to run once before focus can land reliably.
-        Dispatcher.BeginInvoke(new Action(() =>
+            await InitWebViewAsync();
+        }
+        catch (Exception ex)
         {
-            OutputView.Focus();
-            Keyboard.Focus(OutputView);
-            OutputView.CaretIndex = OutputView.Text.Length;
-        }), DispatcherPriority.Input);
-    }
-
-    private void UserControl_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        // Any click inside the terminal area refocuses the OutputView so typing works.
-        OutputView.Focus();
-        Keyboard.Focus(OutputView);
-    }
-
-    private void Output_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
-    {
-        // Caret always at the end so PageUp / arrow nav doesn't desync from input.
-        OutputView.CaretIndex = OutputView.Text.Length;
-    }
-
-    private async void OnUnloaded(object? sender, RoutedEventArgs e)
-    {
-        _flushTimer?.Stop();
-        ViewModels.AppState.Shared.InjectIntoActiveTerminal -= OnInject;
-        await StopAsync();
+            ShowFatal("Falha ao inicializar WebView2: " + ex.Message
+                + "\n\nVerifique se o WebView2 Runtime está instalado (Win11/Win10 21H2+ já vem)."
+                + "\nDownload manual: https://go.microsoft.com/fwlink/p/?LinkId=2124703");
+        }
     }
 
     public async Task ForceShutdownAsync()
     {
         _flushTimer?.Stop();
-        await StopAsync();
+        await StopSessionAsync().ConfigureAwait(false);
+        try { WebView?.Dispose(); } catch { }
     }
 
-    private async Task EnsureStartedAsync()
+    private async void OnUnloaded(object? sender, RoutedEventArgs e)
+    {
+        ViewModels.AppState.Shared.InjectIntoActiveTerminal -= OnInject;
+        _flushTimer?.Stop();
+        await StopSessionAsync().ConfigureAwait(false);
+    }
+
+    private void OnInject(object? sender, string text)
+    {
+        if (ViewModels.AppState.Shared.ActiveTab != _tab) return;
+        if (_session is null) return;
+        try { _session.WriteInput(text); } catch { }
+    }
+
+    // ---------- WebView2 init ----------
+
+    private async Task InitWebViewAsync()
+    {
+        var assetsFolder = WebTerminalAssets.EnsureExtracted();
+
+        var userDataFolder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "DanteCLI", "WebView2");
+        Directory.CreateDirectory(userDataFolder);
+
+        var env = await CoreWebView2Environment.CreateAsync(
+            browserExecutableFolder: null,
+            userDataFolder: userDataFolder,
+            options: null).ConfigureAwait(true);
+
+        await WebView.EnsureCoreWebView2Async(env).ConfigureAwait(true);
+
+        var core = WebView.CoreWebView2;
+        // Tighten the surface — we host trusted local content only.
+        core.Settings.AreDevToolsEnabled = false;
+        core.Settings.AreDefaultContextMenusEnabled = false;
+        core.Settings.IsStatusBarEnabled = false;
+        core.Settings.AreBrowserAcceleratorKeysEnabled = false;
+        core.Settings.IsZoomControlEnabled = false;
+
+        core.SetVirtualHostNameToFolderMapping(
+            VirtualHost,
+            assetsFolder,
+            CoreWebView2HostResourceAccessKind.Allow);
+
+        core.WebMessageReceived += OnWebMessage;
+
+        WebView.Source = new Uri($"https://{VirtualHost}/terminal.html");
+
+        _flushTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(16)
+        };
+        _flushTimer.Tick += (_, _) => FlushOutQueue();
+        _flushTimer.Start();
+    }
+
+    // ---------- JS → C# messages ----------
+
+    private void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        string raw;
+        try { raw = e.TryGetWebMessageAsString() ?? string.Empty; }
+        catch { try { raw = e.WebMessageAsJson; } catch { return; } }
+        if (string.IsNullOrEmpty(raw)) return;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("type", out var typeEl)) return;
+            var type = typeEl.GetString();
+
+            switch (type)
+            {
+                case "ready":
+                    _cols = root.TryGetProperty("cols", out var c) ? c.GetInt32() : 120;
+                    _rows = root.TryGetProperty("rows", out var r) ? r.GetInt32() : 30;
+                    _terminalReady = true;
+                    _ = StartSessionAsync();
+                    break;
+                case "input":
+                    if (root.TryGetProperty("data", out var data) && _session is not null)
+                    {
+                        var text = data.GetString();
+                        if (!string.IsNullOrEmpty(text))
+                            _session.WriteInput(text);
+                    }
+                    break;
+                case "resize":
+                    if (_session is not null)
+                    {
+                        _cols = root.TryGetProperty("cols", out var cc) ? cc.GetInt32() : _cols;
+                        _rows = root.TryGetProperty("rows", out var rr) ? rr.GetInt32() : _rows;
+                        try { _session.Resize(_cols, _rows); } catch { }
+                    }
+                    break;
+                case "link":
+                    if (root.TryGetProperty("uri", out var uri))
+                    {
+                        var u = uri.GetString();
+                        if (!string.IsNullOrEmpty(u)) TryOpenLink(u);
+                    }
+                    break;
+            }
+        }
+        catch (JsonException) { /* ignore malformed */ }
+    }
+
+    private static void TryOpenLink(string uri)
+    {
+        try
+        {
+            if (!uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                !uri.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                return;
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = uri,
+                UseShellExecute = true
+            });
+        }
+        catch { }
+    }
+
+    // ---------- ConPTY lifecycle ----------
+
+    private async Task StartSessionAsync()
     {
         if (_session is not null || _tab is null) return;
-        _session = new PtySession();
-        _session.Output += OnPtyOutput;
-        _session.Exited += (_, _) => Append("\n[processo encerrado]\n");
+
+        var sess = new ConPtySession();
+        sess.Output += OnPtyOutput;
+        sess.Exited += (_, _) =>
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+                _ = WebView.CoreWebView2?.ExecuteScriptAsync(
+                    "danteTerminal && danteTerminal.write(btoa('\\r\\n[processo encerrado]\\r\\n'))")));
+        };
+        _session = sess;
 
         var shell = ResolveShell();
         try
         {
-            await _session.StartAsync(shell, args: null, cwd: _tab.WorkingDirectory);
+            await sess.StartAsync(shell, args: null, cwd: _tab.WorkingDirectory, _cols, _rows)
+                .ConfigureAwait(true);
+
             if (!string.IsNullOrEmpty(_tab.InitialCommand))
-                _session.WriteInput(_tab.InitialCommand + "\r\n");
+                sess.WriteInput(_tab.InitialCommand + "\r\n");
         }
         catch (Exception ex)
         {
-            Append($"\n[erro ao iniciar shell: {ex.Message}]\n");
+            ShowFatal("Falha ao iniciar shell: " + ex.Message);
+            _session = null;
         }
     }
 
-    private async Task StopAsync()
+    private async Task StopSessionAsync()
     {
-        if (_session is null) return;
-        var s = _session;
+        var sess = _session;
         _session = null;
-        try { await s.DisposeAsync(); } catch { }
+        if (sess is null) return;
+        try { await sess.DisposeAsync().ConfigureAwait(false); } catch { }
     }
 
     private static string ResolveShell()
     {
         var configured = ViewModels.AppState.Shared.Settings.DefaultShell;
-        if (!string.IsNullOrWhiteSpace(configured) && System.IO.File.Exists(configured))
+        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured))
             return configured;
-        // cmd.exe is more reliable than pwsh without ConPTY.
+        // With real ConPTY we can now reach for pwsh / powershell if available
+        // (they behave well under ConPTY). Default to cmd.exe for max compatibility.
         return Environment.ExpandEnvironmentVariables("%SystemRoot%\\System32\\cmd.exe");
     }
 
-    // -------- Output pipeline --------
+    // ---------- Output pipe → xterm.js ----------
 
     private void OnPtyOutput(object? sender, ReadOnlyMemory<byte> data)
     {
-        var text = Encoding.UTF8.GetString(data.Span);
-        lock (_pendingLock) { _pending += text; }
+        // Copy to a stable array (the underlying buffer is reused by the pump).
+        var copy = new byte[data.Length];
+        data.Span.CopyTo(copy);
+        _outQueue.Enqueue(copy);
     }
 
-    private void FlushPending()
+    private void FlushOutQueue()
     {
-        string chunk;
-        lock (_pendingLock)
+        if (_outQueue.IsEmpty) return;
+        if (!_terminalReady) return;
+        if (_flushScheduled) return;
+        _flushScheduled = true;
+
+        try
         {
-            if (_pending.Length == 0) return;
-            chunk = _pending;
-            _pending = string.Empty;
+            // Concatenate all queued chunks into one base64 payload to minimize
+            // round-trips into the JS host.
+            using var ms = new MemoryStream();
+            while (_outQueue.TryDequeue(out var chunk))
+                ms.Write(chunk, 0, chunk.Length);
+            if (ms.Length == 0) return;
+
+            var b64 = Convert.ToBase64String(ms.ToArray());
+            var script = $"window.danteTerminal && window.danteTerminal.write('{b64}')";
+            _ = WebView.CoreWebView2?.ExecuteScriptAsync(script);
         }
-        Append(NormalizeForDisplay(chunk));
-        // Anchor follows the end of PTY output. If user was mid-type, their
-        // local-echoed chars stay in _inputLine and will be flushed on Enter;
-        // visually the typed chars appeared before this output, which is the
-        // best we can do without a real terminal grid.
-        _inputAnchor = _buffer.Length;
+        finally
+        {
+            _flushScheduled = false;
+        }
     }
 
-    private static readonly Regex AnsiEscape = new(
-        @"\x1B\[[0-?]*[ -/]*[@-~]|\x1B\][^\x07\x1B]*(\x07|\x1B\\)|\x1B[@-_]",
-        RegexOptions.Compiled);
-
-    private static string NormalizeForDisplay(string s)
+    private void ShowFatal(string message)
     {
-        if (string.IsNullOrEmpty(s)) return s;
-
-        // 1. Strip ANSI / OSC / CSI escape sequences.
-        s = AnsiEscape.Replace(s, "");
-
-        // 2. CRLF normalization
-        s = s.Replace("\r\n", "\n");
-
-        // 3. Process backspace (\b) by removing the previous character.
-        if (s.Contains('\b') || s.Contains('\r') || s.IndexOf('') >= 0)
+        Dispatcher.BeginInvoke(new Action(() =>
         {
-            var sb = new StringBuilder(s.Length);
-            foreach (var c in s)
+            // Replace the WebView with a plain text error so the user sees something.
+            var tb = new TextBlock
             {
-                switch (c)
-                {
-                    case '\b':
-                        if (sb.Length > 0 && sb[^1] != '\n') sb.Length--;
-                        break;
-                    case '\r':
-                        // Standalone CR — eat. Real terminals would move cursor to col 0;
-                        // for our flat text rendering, dropping it produces sane output.
-                        break;
-                    case '': // BEL
-                        break;
-                    default:
-                        sb.Append(c);
-                        break;
-                }
-            }
-            s = sb.ToString();
-        }
-
-        // 4. Strip remaining non-printables except tab/newline.
-        var clean = new StringBuilder(s.Length);
-        foreach (var c in s)
-        {
-            if (c == '\n' || c == '\t' || !char.IsControl(c)) clean.Append(c);
-        }
-        return clean.ToString();
-    }
-
-    private void Append(string text)
-    {
-        if (string.IsNullOrEmpty(text)) return;
-        _buffer.Append(text);
-        if (_buffer.Length > MaxBufferLength)
-        {
-            // Trim from start to last 80% of MaxBufferLength to avoid frequent trims.
-            var keep = (int)(MaxBufferLength * 0.8);
-            var trim = _buffer.Length - keep;
-            _buffer.Remove(0, trim);
-            _inputAnchor = Math.Max(0, _inputAnchor - trim);
-        }
-        OutputView.Text = _buffer.ToString();
-        OutputView.CaretIndex = OutputView.Text.Length;
-        OutputView.ScrollToEnd();
-    }
-
-    // -------- Input pipeline (local-echo line discipline) --------
-
-    private void Output_PreviewTextInput(object sender, TextCompositionEventArgs e)
-    {
-        if (_session is null) { e.Handled = true; return; }
-        var text = e.Text;
-        if (!string.IsNullOrEmpty(text))
-        {
-            _inputLine.Append(text);
-            AppendEcho(text);
-        }
-        e.Handled = true;
-    }
-
-    private void Output_PreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (_session is null) { e.Handled = true; return; }
-
-        // Ctrl-C copies selection if any; else interrupt the child.
-        if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
-        {
-            switch (e.Key)
+                Text = message,
+                Foreground = System.Windows.Media.Brushes.WhiteSmoke,
+                Background = System.Windows.Media.Brushes.Transparent,
+                TextWrapping = TextWrapping.Wrap,
+                FontFamily = new System.Windows.Media.FontFamily("Cascadia Mono, Consolas"),
+                Margin = new Thickness(16)
+            };
+            if (Content is Grid g)
             {
-                case Key.C:
-                    if (!string.IsNullOrEmpty(OutputView.SelectedText))
-                    {
-                        try { Clipboard.SetText(OutputView.SelectedText); } catch { }
-                        e.Handled = true;
-                        return;
-                    }
-                    _session.WriteInput("\x03");
-                    _inputLine.Clear();
-                    AppendEcho("^C\n");
-                    _inputAnchor = _buffer.Length;
-                    e.Handled = true;
-                    return;
-                case Key.V:
-                    try
-                    {
-                        if (Clipboard.ContainsText())
-                        {
-                            var pasted = Clipboard.GetText();
-                            // Split on newline — send completed lines, keep tail in buffer.
-                            var pieces = pasted.Replace("\r\n", "\n").Split('\n');
-                            for (int i = 0; i < pieces.Length; i++)
-                            {
-                                _inputLine.Append(pieces[i]);
-                                AppendEcho(pieces[i]);
-                                if (i < pieces.Length - 1) SubmitLine();
-                            }
-                        }
-                    }
-                    catch { }
-                    e.Handled = true;
-                    return;
+                g.Children.Clear();
+                g.Children.Add(tb);
             }
-        }
-
-        switch (e.Key)
-        {
-            case Key.Enter:
-                SubmitLine();
-                e.Handled = true;
-                break;
-            case Key.Back:
-                if (_inputLine.Length > 0)
-                {
-                    _inputLine.Length--;
-                    if (_buffer.Length > _inputAnchor)
-                    {
-                        _buffer.Length--;
-                        OutputView.Text = _buffer.ToString();
-                        OutputView.CaretIndex = OutputView.Text.Length;
-                    }
-                }
-                e.Handled = true;
-                break;
-            case Key.Tab:
-                _inputLine.Append('\t');
-                AppendEcho("    ");
-                e.Handled = true;
-                break;
-            case Key.Escape:
-                // Drop current line.
-                if (_inputLine.Length > 0)
-                {
-                    if (_buffer.Length >= _inputAnchor)
-                        _buffer.Length = _inputAnchor;
-                    _inputLine.Clear();
-                    OutputView.Text = _buffer.ToString();
-                    OutputView.CaretIndex = OutputView.Text.Length;
-                }
-                e.Handled = true;
-                break;
-            // Arrow keys / Home / End / Delete are ignored without ConPTY —
-            // cmd.exe on piped stdin doesn't honor them and there's no
-            // meaningful local action that would line up with the child's state.
-            case Key.Up:
-            case Key.Down:
-            case Key.Left:
-            case Key.Right:
-            case Key.Home:
-            case Key.End:
-            case Key.Delete:
-                e.Handled = true;
-                break;
-        }
-    }
-
-    private void SubmitLine()
-    {
-        if (_session is null) return;
-        var line = _inputLine.ToString();
-        _inputLine.Clear();
-        _session.WriteInput(line + "\r\n");
-        AppendEcho("\n");
-        _inputAnchor = _buffer.Length;
-    }
-
-    /// <summary>
-    /// Append text from local echo (typed chars) directly to the display buffer
-    /// without going through the PTY flush path. Keeps caret pinned at the end.
-    /// </summary>
-    private void AppendEcho(string text)
-    {
-        if (string.IsNullOrEmpty(text)) return;
-        _buffer.Append(text);
-        if (_buffer.Length > MaxBufferLength)
-        {
-            var keep = (int)(MaxBufferLength * 0.8);
-            var trim = _buffer.Length - keep;
-            _buffer.Remove(0, trim);
-            _inputAnchor = Math.Max(0, _inputAnchor - trim);
-        }
-        OutputView.Text = _buffer.ToString();
-        OutputView.CaretIndex = OutputView.Text.Length;
-        OutputView.ScrollToEnd();
+        }));
     }
 }

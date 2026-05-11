@@ -1,0 +1,134 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>DANTE CLI Terminal</title>
+<link rel="stylesheet" href="xterm.css">
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    background: #1A1B26;
+    overflow: hidden;
+  }
+  #term {
+    height: 100vh;
+    width: 100vw;
+    padding: 8px;
+    box-sizing: border-box;
+  }
+  .xterm .xterm-viewport { background-color: #1A1B26 !important; }
+  .xterm { font-family: 'Cascadia Mono', Consolas, 'Courier New', monospace; }
+</style>
+</head>
+<body>
+<div id="term"></div>
+<script src="xterm.js"></script>
+<script src="xterm-addon-fit.js"></script>
+<script src="xterm-addon-web-links.js"></script>
+<script>
+(function () {
+  // Bridge: C# <-> JS
+  // Inbound from C#:
+  //   - JSON {type:"write", data:"base64..."}
+  //   - JSON {type:"clear"}
+  //   - JSON {type:"theme", colors:{...}}
+  // Outbound to C# via window.chrome.webview.postMessage(JSON.stringify(...))
+  //   - {type:"ready", cols, rows}
+  //   - {type:"input", data:"..."}         // raw text/escape from user typing
+  //   - {type:"resize", cols, rows}
+  //   - {type:"log", msg:"..."}
+
+  const post = (obj) => {
+    try { window.chrome.webview.postMessage(JSON.stringify(obj)); }
+    catch (e) { /* webview not ready */ }
+  };
+
+  const term = new Terminal({
+    fontFamily: 'Cascadia Mono, Consolas, Courier New, monospace',
+    fontSize: 13,
+    cursorBlink: true,
+    convertEol: true,
+    scrollback: 5000,
+    allowProposedApi: true,
+    theme: {
+      background: '#1A1B26',
+      foreground: '#C0CAF5',
+      cursor: '#7AA2F7',
+      selectionBackground: '#3E456A',
+      black: '#15161E',
+      red: '#F7768E',
+      green: '#9ECE6A',
+      yellow: '#E0AF68',
+      blue: '#7AA2F7',
+      magenta: '#BB9AF7',
+      cyan: '#7DCFFF',
+      white: '#A9B1D6',
+      brightBlack: '#414868',
+      brightRed: '#F7768E',
+      brightGreen: '#9ECE6A',
+      brightYellow: '#E0AF68',
+      brightBlue: '#7AA2F7',
+      brightMagenta: '#BB9AF7',
+      brightCyan: '#7DCFFF',
+      brightWhite: '#C0CAF5'
+    }
+  });
+
+  const fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  try {
+    term.loadAddon(new WebLinksAddon.WebLinksAddon((evt, uri) => {
+      post({ type: 'link', uri });
+    }));
+  } catch (e) { /* addon optional */ }
+
+  const container = document.getElementById('term');
+  term.open(container);
+  term.focus();
+
+  // Send anything the user types back to C# — the PTY will echo legitimately.
+  term.onData((data) => post({ type: 'input', data }));
+
+  // Resize: announce new cols/rows so C# can call ResizePseudoConsole.
+  const sendResize = () => {
+    try {
+      fit.fit();
+      post({ type: 'resize', cols: term.cols, rows: term.rows });
+    } catch (e) { /* dimensions not ready */ }
+  };
+
+  let resizeRaf = 0;
+  window.addEventListener('resize', () => {
+    if (resizeRaf) cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(sendResize);
+  });
+
+  // Inbound C# -> JS messages.
+  // C# pushes bytes encoded as base64 to avoid escaping headaches.
+  window.danteTerminal = {
+    write(b64) {
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      // xterm.write accepts Uint8Array directly.
+      term.write(bytes);
+    },
+    clear() { term.clear(); },
+    focus() { term.focus(); },
+    paste(text) { term.paste(text); },
+    fit() { sendResize(); }
+  };
+
+  // Click anywhere keeps focus on terminal.
+  container.addEventListener('mousedown', () => term.focus());
+
+  // First resize + announce ready once layout settled.
+  requestAnimationFrame(() => {
+    sendResize();
+    post({ type: 'ready', cols: term.cols, rows: term.rows });
+  });
+})();
+</script>
+</body>
+</html>
