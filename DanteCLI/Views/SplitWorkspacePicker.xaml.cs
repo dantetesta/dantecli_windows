@@ -172,7 +172,23 @@ public partial class SplitWorkspacePicker : Window
     private void UpdateCount()
     {
         CountLabel.Text = $"{_selected.Count} de {_layout.Capacity} selecionada{(_selected.Count == 1 ? "" : "s")}";
-        ApplyButton.IsEnabled = _selected.Count >= 2;
+        // Even with a single selection we can apply — missing slots get filled
+        // with fresh shells automatically by AppState.EnterSplitWorkspace.
+        ApplyButton.IsEnabled = _selected.Count >= 1;
+        // Disable "Selecionar todos" when capacity is already reached or when
+        // no tabs exist.
+        var available = AppState.Shared.Tabs.Count;
+        SelectAllButton.IsEnabled = available > 0 && _selected.Count < Math.Min(available, _layout.Capacity);
+    }
+
+    private void SelectAll_Click(object sender, RoutedEventArgs e)
+    {
+        // Take tabs in order, up to layout capacity.
+        var ids = AppState.Shared.Tabs.Select(t => t.Id).Take(_layout.Capacity).ToList();
+        _selected.Clear();
+        foreach (var id in ids) _selected.Add(id);
+        BuildTabs();
+        UpdateCount();
     }
 
     private void Apply_Click(object sender, RoutedEventArgs e)
