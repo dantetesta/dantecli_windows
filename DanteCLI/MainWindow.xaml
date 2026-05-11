@@ -54,11 +54,16 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
+            <!-- Update banner (visible only when an update is available) -->
+            <views:UpdateBanner x:Name="UpdateBannerView" Grid.Row="0"
+                                Visibility="Collapsed" />
+
             <!-- AI toolbar -->
-            <Border Grid.Row="0" BorderBrush="{StaticResource DividerBrush}"
+            <Border Grid.Row="1" BorderBrush="{StaticResource DividerBrush}"
                     BorderThickness="0,0,0,1" Padding="6,6">
                 <DockPanel>
                     <Button DockPanel.Dock="Left" Content="⚙" FontSize="14"
@@ -75,7 +80,7 @@
             </Border>
 
             <!-- Tab strip -->
-            <Border Grid.Row="1" BorderBrush="{StaticResource DividerBrush}"
+            <Border Grid.Row="2" BorderBrush="{StaticResource DividerBrush}"
                     BorderThickness="0,0,0,1" Padding="6,6">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -100,7 +105,7 @@
             </Border>
 
             <!-- Tab body host: Canvas keeps tab views identity-stable across split mode changes -->
-            <Canvas x:Name="TabsCanvas" Grid.Row="2" Background="#1A1B26"
+            <Canvas x:Name="TabsCanvas" Grid.Row="3" Background="#1A1B26"
                     SizeChanged="TabsCanvas_SizeChanged" ClipToBounds="True" />
         </Grid>
     </Grid>

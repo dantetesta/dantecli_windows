@@ -28,6 +28,8 @@ public partial class MainWindow : Window
     /// Vacant-slot placeholders, keyed by the dead UUID in workspace.TabIds.
     private readonly Dictionary<Guid, FrameworkElement> _vacantSlots = new();
 
+    private bool _updateBannerDismissed;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -38,11 +40,41 @@ public partial class MainWindow : Window
         state.Favorites.CollectionChanged += (_, _) => { /* sidebar listens itself */ };
         state.PropertyChanged += AppState_PropertyChanged;
 
+        UpdateBannerView.Dismissed += (_, _) =>
+        {
+            _updateBannerDismissed = true;
+            UpdateBannerView.Visibility = Visibility.Collapsed;
+        };
+        Services.UpdateChecker.Shared.StateChanged += (_, _) =>
+            Dispatcher.BeginInvoke(new Action(SyncUpdateBanner));
+
         Closing += MainWindow_Closing;
 
         RebuildTabStrip();
         SyncTabBodies();
-        Loaded += (_, _) => RelayoutCanvas();
+        Loaded += async (_, _) =>
+        {
+            RelayoutCanvas();
+            // Silent auto-check on startup. Banner only shows when something
+            // newer is available — otherwise the UI stays clean.
+            await Task.Delay(1500);
+            await Services.UpdateChecker.Shared.CheckAsync();
+        };
+    }
+
+    private void SyncUpdateBanner()
+    {
+        if (_updateBannerDismissed) return;
+        var checker = Services.UpdateChecker.Shared;
+        if (checker.LastResult is Services.UpdateState.Available avail)
+        {
+            UpdateBannerView.Bind(avail.Manifest);
+            UpdateBannerView.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            UpdateBannerView.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void AppState_PropertyChanged(object? sender, PropertyChangedEventArgs e)
