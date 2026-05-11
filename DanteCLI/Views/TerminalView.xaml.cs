@@ -18,6 +18,12 @@ namespace DanteCLI.Views;
 /// and ANSI escape sequences are normalized; this is **not** a full VT emulator —
 /// it's the smallest renderer that produces legible output for cmd.exe and most
 /// non-interactive shell commands.
+///
+/// Local-echo line discipline: because we use redirected pipes (no ConPTY), cmd.exe
+/// does NOT echo typed characters back. So we maintain a per-line input buffer,
+/// paint typed chars locally, and only flush the completed line to the child on Enter.
+/// Backspace/Home/End edit the local buffer; arrow keys are ignored in this mode
+/// (cmd doesn't honor them on piped stdin anyway).
 /// </summary>
 public partial class TerminalView : UserControl
 {
@@ -29,6 +35,10 @@ public partial class TerminalView : UserControl
     private readonly object _pendingLock = new();
     private string _pending = string.Empty;
     private DispatcherTimer? _flushTimer;
+
+    // Local-echo line discipline (see class summary)
+    private readonly StringBuilder _inputLine = new();
+    private int _inputAnchor; // index in _buffer where current input line begins
 
     public TerminalView()
     {
@@ -146,6 +156,11 @@ public partial class TerminalView : UserControl
             _pending = string.Empty;
         }
         Append(NormalizeForDisplay(chunk));
+        // Anchor follows the end of PTY output. If user was mid-type, their
+        // local-echoed chars stay in _inputLine and will be flushed on Enter;
+        // visually the typed chars appeared before this output, which is the
+        // best we can do without a real terminal grid.
+        _inputAnchor = _buffer.Length;
     }
 
     private static readonly Regex AnsiEscape = new(
@@ -204,19 +219,26 @@ public partial class TerminalView : UserControl
         {
             // Trim from start to last 80% of MaxBufferLength to avoid frequent trims.
             var keep = (int)(MaxBufferLength * 0.8);
-            _buffer.Remove(0, _buffer.Length - keep);
+            var trim = _buffer.Length - keep;
+            _buffer.Remove(0, trim);
+            _inputAnchor = Math.Max(0, _inputAnchor - trim);
         }
         OutputView.Text = _buffer.ToString();
         OutputView.CaretIndex = OutputView.Text.Length;
         OutputView.ScrollToEnd();
     }
 
-    // -------- Input pipeline --------
+    // -------- Input pipeline (local-echo line discipline) --------
 
     private void Output_PreviewTextInput(object sender, TextCompositionEventArgs e)
     {
         if (_session is null) { e.Handled = true; return; }
-        _session.WriteInput(e.Text);
+        var text = e.Text;
+        if (!string.IsNullOrEmpty(text))
+        {
+            _inputLine.Append(text);
+            AppendEcho(text);
+        }
         e.Handled = true;
     }
 
@@ -224,7 +246,7 @@ public partial class TerminalView : UserControl
     {
         if (_session is null) { e.Handled = true; return; }
 
-        // Allow Ctrl+C / Ctrl+V to flow through for copy/paste of selection.
+        // Ctrl-C copies selection if any; else interrupt the child.
         if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
         {
             switch (e.Key)
@@ -236,8 +258,10 @@ public partial class TerminalView : UserControl
                         e.Handled = true;
                         return;
                     }
-                    // No selection — send Ctrl+C interrupt to shell.
                     _session.WriteInput("\x03");
+                    _inputLine.Clear();
+                    AppendEcho("^C\n");
+                    _inputAnchor = _buffer.Length;
                     e.Handled = true;
                     return;
                 case Key.V:
@@ -245,8 +269,15 @@ public partial class TerminalView : UserControl
                     {
                         if (Clipboard.ContainsText())
                         {
-                            var text = Clipboard.GetText();
-                            _session.WriteInput(text);
+                            var pasted = Clipboard.GetText();
+                            // Split on newline — send completed lines, keep tail in buffer.
+                            var pieces = pasted.Replace("\r\n", "\n").Split('\n');
+                            for (int i = 0; i < pieces.Length; i++)
+                            {
+                                _inputLine.Append(pieces[i]);
+                                AppendEcho(pieces[i]);
+                                if (i < pieces.Length - 1) SubmitLine();
+                            }
                         }
                     }
                     catch { }
@@ -257,17 +288,82 @@ public partial class TerminalView : UserControl
 
         switch (e.Key)
         {
-            case Key.Enter:  _session.WriteInput("\r\n"); e.Handled = true; break;
-            case Key.Back:   _session.WriteInput("\b"); e.Handled = true; break;
-            case Key.Tab:    _session.WriteInput("\t"); e.Handled = true; break;
-            case Key.Escape: _session.WriteInput("\x1B"); e.Handled = true; break;
-            case Key.Up:     _session.WriteInput("\x1B[A"); e.Handled = true; break;
-            case Key.Down:   _session.WriteInput("\x1B[B"); e.Handled = true; break;
-            case Key.Right:  _session.WriteInput("\x1B[C"); e.Handled = true; break;
-            case Key.Left:   _session.WriteInput("\x1B[D"); e.Handled = true; break;
-            case Key.Home:   _session.WriteInput("\x1B[H"); e.Handled = true; break;
-            case Key.End:    _session.WriteInput("\x1B[F"); e.Handled = true; break;
-            case Key.Delete: _session.WriteInput("\x1B[3~"); e.Handled = true; break;
+            case Key.Enter:
+                SubmitLine();
+                e.Handled = true;
+                break;
+            case Key.Back:
+                if (_inputLine.Length > 0)
+                {
+                    _inputLine.Length--;
+                    if (_buffer.Length > _inputAnchor)
+                    {
+                        _buffer.Length--;
+                        OutputView.Text = _buffer.ToString();
+                        OutputView.CaretIndex = OutputView.Text.Length;
+                    }
+                }
+                e.Handled = true;
+                break;
+            case Key.Tab:
+                _inputLine.Append('\t');
+                AppendEcho("    ");
+                e.Handled = true;
+                break;
+            case Key.Escape:
+                // Drop current line.
+                if (_inputLine.Length > 0)
+                {
+                    if (_buffer.Length >= _inputAnchor)
+                        _buffer.Length = _inputAnchor;
+                    _inputLine.Clear();
+                    OutputView.Text = _buffer.ToString();
+                    OutputView.CaretIndex = OutputView.Text.Length;
+                }
+                e.Handled = true;
+                break;
+            // Arrow keys / Home / End / Delete are ignored without ConPTY —
+            // cmd.exe on piped stdin doesn't honor them and there's no
+            // meaningful local action that would line up with the child's state.
+            case Key.Up:
+            case Key.Down:
+            case Key.Left:
+            case Key.Right:
+            case Key.Home:
+            case Key.End:
+            case Key.Delete:
+                e.Handled = true;
+                break;
         }
+    }
+
+    private void SubmitLine()
+    {
+        if (_session is null) return;
+        var line = _inputLine.ToString();
+        _inputLine.Clear();
+        _session.WriteInput(line + "\r\n");
+        AppendEcho("\n");
+        _inputAnchor = _buffer.Length;
+    }
+
+    /// <summary>
+    /// Append text from local echo (typed chars) directly to the display buffer
+    /// without going through the PTY flush path. Keeps caret pinned at the end.
+    /// </summary>
+    private void AppendEcho(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        _buffer.Append(text);
+        if (_buffer.Length > MaxBufferLength)
+        {
+            var keep = (int)(MaxBufferLength * 0.8);
+            var trim = _buffer.Length - keep;
+            _buffer.Remove(0, trim);
+            _inputAnchor = Math.Max(0, _inputAnchor - trim);
+        }
+        OutputView.Text = _buffer.ToString();
+        OutputView.CaretIndex = OutputView.Text.Length;
+        OutputView.ScrollToEnd();
     }
 }
