@@ -23,10 +23,10 @@ public partial class SplitWorkspacePicker : Window
         InitializeComponent();
         Loaded += (_, _) =>
         {
-            // Pre-select active tab
-            if (AppState.Shared.ActiveTab is { } a) _selected.Add(a.Id);
-            // Restore current workspace
-            if (AppState.Shared.SplitWorkspace is { } ws)
+            // Restore current workspace ONLY if it has tabs. A saved workspace
+            // with an empty TabIds list would clear the pre-selection and leave
+            // Apply disabled (UpdateCount keys IsEnabled on _selected.Count >= 1).
+            if (AppState.Shared.SplitWorkspace is { } ws && ws.TabIds.Count > 0)
             {
                 _selected.Clear();
                 foreach (var id in ws.TabIds) _selected.Add(id);
@@ -35,6 +35,11 @@ public partial class SplitWorkspacePicker : Window
                 CatHorizontal.IsChecked = _category == SplitCategory.Horizontal;
                 CatVertical.IsChecked   = _category == SplitCategory.Vertical;
                 CatGrid.IsChecked       = _category == SplitCategory.Grid;
+            }
+            else if (AppState.Shared.ActiveTab is { } a)
+            {
+                // Pre-select active tab so Apply is enabled out of the box
+                _selected.Add(a.Id);
             }
             BuildLayouts();
             BuildTabs();

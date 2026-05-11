@@ -222,6 +222,20 @@ public partial class TerminalView : UserControl
             await sess.StartAsync(shell, args: null, cwd: _tab.WorkingDirectory, _cols, _rows)
                 .ConfigureAwait(true);
 
+            // Force UTF-8 console codepage so xterm.js can decode acentos/PT-BR/CJK
+            // correctly. xterm.js's `term.write(Uint8Array)` always decodes UTF-8;
+            // cmd.exe on a localized Windows defaults to legacy codepages (e.g.
+            // 850/1252) which produces mojibake (�) on accented bytes.
+            // The redirect silences the echoed "Active code page: 65001" line.
+            var shellName = Path.GetFileName(shell).ToLowerInvariant();
+            string? utf8Warmup = shellName switch
+            {
+                "cmd.exe" => "chcp 65001 > nul\r\n",
+                "powershell.exe" or "pwsh.exe" => "chcp 65001 | Out-Null\r\n",
+                _ => null
+            };
+            if (utf8Warmup is not null) sess.WriteInput(utf8Warmup);
+
             if (!string.IsNullOrEmpty(_tab.InitialCommand))
                 sess.WriteInput(_tab.InitialCommand + "\r\n");
         }
